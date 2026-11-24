@@ -1,0 +1,31 @@
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="page-title"><%= t('owner.branches') %></h1>
+  <a class="btn btn-primary" href="/owner/branches/new">➕ <%= t('owner.newBranch') %></a>
+</div>
+<% if (!list.length) { %>
+  <%- include('../../partials/empty', { message: t('home.empty'), icon: '🏢' }) %>
+<% } %>
+<ul class="grid gap-4 md:grid-cols-2">
+  <% list.forEach((b) => { const bl = lines.filter((l) => l.branchId === b.id); %>
+    <li class="card space-y-3">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <h2 class="text-lg font-bold"><%= b.name %></h2>
+          <p class="muted"><%= b.city %> · <span class="num">/b/<%= b.slug %></span></p>
+        </div>
+        <span class="badge <%= b.isActive ? 'badge-green' : 'badge-gray' %>"><%= b.isActive ? t('common.active') : t('common.inactive') %></span>
+      </div>
+      <p class="text-sm"><%= t('branch.fee') %>: <strong class="num"><%= Number(b.feeAmount) > 0 ? fmt.money(b.feeAmount, b.currency) : t('branch.free') %></strong></p>
+      <div class="flex flex-wrap gap-2">
+        <% bl.forEach((l) => { %>
+          <a class="badge badge-brand hover:underline" href="/owner/lines/<%= l.id %>/slots"><%= l.name %></a>
+        <% }) %>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a class="btn btn-secondary btn-sm" href="/owner/branches/<%= b.id %>"><%= t('owner.editBranch') %></a>
+        <a class="btn btn-ghost btn-sm" href="/owner/branches/<%= b.id %>/lines/new">➕ <%= t('owner.newLine') %></a>
+        <a class="btn btn-ghost btn-sm" href="/b/<%= b.slug %>" target="_blank" rel="noopener">↗</a>
+      </div>
+    </li>
+  <% }) %>
+</ul>

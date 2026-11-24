@@ -1,0 +1,74 @@
+<% const tz = view.timezone; %>
+<a class="text-sm text-brand-700 hover:underline" href="/operator/appointments?date=<%= a.localDate %>">‹ <%= t('operator.appointmentsTitle') %></a>
+<div class="mb-6 mt-2 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <h1 class="page-title"><%= view.customerName || '—' %></h1>
+    <p class="muted num"><%= view.customerPhone %></p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <%- include('../../partials/badge', { kind: 'appointment', value: a.status }) %>
+    <%- include('../../partials/badge', { kind: 'payment', value: a.paymentStatus }) %>
+  </div>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-3">
+  <div class="space-y-6 lg:col-span-2">
+    <section class="card">
+      <dl class="grid gap-4 sm:grid-cols-2">
+        <div><dt class="muted"><%= t('common.branch') %></dt><dd class="font-semibold"><%= view.branchName %> — <%= view.lineName %></dd></div>
+        <div><dt class="muted"><%= t('appointment.when') %></dt><dd class="font-semibold"><%= fmt.date(a.localDate, tz) %> · <span class="num"><%= fmt.hhmm(a.localTime) %></span></dd></div>
+        <div><dt class="muted"><%= t('common.reference') %></dt><dd class="num font-semibold"><%= a.reference %></dd></div>
+        <div><dt class="muted"><%= t('common.amount') %></dt><dd class="num font-semibold"><%= fmt.money(a.amountDue, a.currency) %> <span class="text-sm text-slate-500">(<%= t(`payment.feeTypes.${a.feeType}`) %>)</span></dd></div>
+      </dl>
+      <% if (a.customerNote) { %><p class="mt-4 rounded-lg bg-slate-50 p-3"><strong><%= t('appointment.noteLabel') %>:</strong> <%= a.customerNote %></p><% } %>
+      <% if (a.cancelReason) { %><p class="mt-2 text-sm text-rose-700"><%= t('common.reason') %>: <%= a.cancelReason %></p><% } %>
+      <p class="hint mt-4">🔒 <%= t('owner.paymentReadonly') %></p>
+    </section>
+
+    <% if (view.ticket) { %>
+      <a href="/operator/lines/<%= view.ticket.lineId %>" class="card flex items-center justify-between border-brand-300 bg-brand-50">
+        <span class="num text-3xl font-bold text-brand-700"><%= view.ticket.displayCode %></span>
+        <%- include('../../partials/badge', { kind: 'ticket', value: view.ticket.status }) %>
+      </a>
+    <% } %>
+
+    <%- include('../../partials/notes', { notes: view.notes, action: `/operator/appointments/${a.id}/notes`, staff: true, tz }) %>
+  </div>
+
+  <aside class="space-y-6">
+    <section class="card space-y-3">
+      <% if (a.status === 'confirmed') { %>
+        <form method="post" action="/operator/appointments/<%= a.id %>/check-in">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-primary w-full" type="submit">📍 <%= t('operator.checkIn') %></button>
+        </form>
+      <% } %>
+      <% if (['confirmed', 'checked_in'].includes(a.status) && new Date(a.startsAt) < new Date()) { %>
+        <form method="post" action="/operator/appointments/<%= a.id %>/no-show">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-secondary w-full" type="submit"><%= t('operator.markNoShow') %></button>
+        </form>
+      <% } %>
+      <% if (['held', 'confirmed', 'checked_in'].includes(a.status)) { %>
+        <form method="post" action="/operator/appointments/<%= a.id %>/cancel" class="space-y-2" data-confirm="<%= t('appointment.cancelConfirm') %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="label" for="reason"><%= t('common.reason') %></label>
+          <input id="reason" name="reason" class="input" maxlength="300">
+          <button class="btn btn-danger w-full" type="submit"><%= t('appointment.cancel') %></button>
+        </form>
+      <% } %>
+    </section>
+
+    <section class="card">
+      <h2 class="section-title mb-3"><%= t('appointment.history') %></h2>
+      <ol class="space-y-2 text-sm">
+        <% view.events.forEach(({ event, actorName }) => { %>
+          <li class="border-b border-slate-100 pb-2">
+            <p class="font-semibold"><%= t(`appointment.events.${event.type}`) %></p>
+            <p class="muted"><span class="num"><%= fmt.dateTime(event.createdAt, tz) %></span><%= actorName ? ` · ${actorName}` : '' %></p>
+          </li>
+        <% }) %>
+      </ol>
+    </section>
+  </aside>
+</div>

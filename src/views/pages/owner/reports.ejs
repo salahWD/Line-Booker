@@ -1,0 +1,111 @@
+<%
+  const tot = report.totals;
+  const qs = new URLSearchParams({ from: report.period.from, to: report.period.to, ...(report.filters.branchId ? { branchId: report.filters.branchId } : {}), ...(report.filters.lineId ? { lineId: report.filters.lineId } : {}) }).toString();
+  const pct = (v) => (v === null || v === undefined ? '—' : `${v}%`);
+  const chartLabels = {
+    completed: t('reports.attended'), noShow: t('reports.noShows'), cancelled: t('reports.cancellations'), open: t('appointment.statusLabels.confirmed'),
+    tickets: t('reports.tickets'), avgWait: `${t('reports.avgWait')} (${t('reports.minutesUnit')})`,
+  };
+%>
+<h1 class="page-title mb-4"><%= t('reports.title') %></h1>
+
+<form method="get" class="card mb-6 grid gap-3 sm:grid-cols-5 sm:items-end">
+  <div><label class="label" for="from"><%= t('common.from') %></label><input id="from" type="date" name="from" value="<%= report.period.from %>" class="input"></div>
+  <div><label class="label" for="to"><%= t('common.to') %></label><input id="to" type="date" name="to" value="<%= report.period.to %>" class="input"></div>
+  <div>
+    <label class="label" for="branchId"><%= t('common.branch') %></label>
+    <select id="branchId" name="branchId" class="input">
+      <option value=""><%= t('common.all') %></option>
+      <% branches.forEach((b) => { %><option value="<%= b.id %>" <%= report.filters.branchId === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="label" for="lineId"><%= t('common.line') %></label>
+    <select id="lineId" name="lineId" class="input">
+      <option value=""><%= t('common.all') %></option>
+      <% lines.forEach((l) => { %><option value="<%= l.id %>" <%= report.filters.lineId === l.id ? 'selected' : '' %>><%= l.name %></option><% }) %>
+    </select>
+  </div>
+  <button class="btn btn-primary" type="submit"><%= t('reports.apply') %></button>
+</form>
+
+<div class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+  <div class="stat"><span class="stat-label"><%= t('reports.appointments') %></span><span class="stat-value num"><%= tot.appointments %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.attendanceRate') %></span><span class="stat-value num"><%= pct(tot.attendanceRate) %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.noShows') %></span><span class="stat-value num"><%= tot.noShow %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.cancellations') %></span><span class="stat-value num"><%= tot.cancelled + tot.expired %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.tickets') %></span><span class="stat-value num"><%= tot.tickets %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.walkIns') %></span><span class="stat-value num"><%= tot.walkIns %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.served') %></span><span class="stat-value num"><%= tot.served %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('reports.accuracy') %></span><span class="stat-value num"><%= pct(tot.accuracy) %></span></div>
+</div>
+
+<%# Charts (Chart.js) — data passed as escaped JSON in a data attribute. %>
+<div class="mb-6 grid gap-6 lg:grid-cols-2" x-data="reportCharts" data-daily="<%= JSON.stringify(report.daily) %>" data-labels="<%= JSON.stringify(chartLabels) %>">
+  <section class="card">
+    <h2 class="section-title mb-3"><%= t('reports.chartAppointments') %></h2>
+    <div class="relative h-64"><canvas x-ref="appointments" aria-label="<%= t('reports.chartAppointments') %>" role="img"></canvas></div>
+  </section>
+  <section class="card">
+    <h2 class="section-title mb-3"><%= t('reports.chartTickets') %></h2>
+    <div class="relative h-64"><canvas x-ref="tickets" aria-label="<%= t('reports.chartTickets') %>" role="img"></canvas></div>
+  </section>
+</div>
+
+<section class="card mb-6">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <h2 class="section-title"><%= t('reports.appointments') %> — <%= t('reports.byBranch') %></h2>
+    <a class="btn btn-secondary btn-sm" href="/owner/reports/export.csv?type=appointments&<%= qs %>">⬇ <%= t('common.exportCsv') %></a>
+  </div>
+  <% if (!report.appointments.length) { %><p class="muted"><%= t('reports.noData') %></p><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th><%= t('common.branch') %></th><th><%= t('common.line') %></th><th><%= t('reports.appointments') %></th><th><%= t('reports.attended') %></th><th><%= t('reports.noShows') %></th><th><%= t('reports.cancellations') %></th><th><%= t('reports.expired') %></th><th><%= t('reports.attendanceRate') %></th></tr></thead>
+      <tbody>
+        <% report.appointments.forEach((r) => { %>
+          <tr><td><%= r.branch_name %></td><td><%= r.line_name %></td><td class="num"><%= r.total %></td><td class="num"><%= r.completed %></td><td class="num"><%= r.no_show %></td><td class="num"><%= r.cancelled %></td><td class="num"><%= r.expired %></td><td class="num"><%= pct(r.attendanceRate) %></td></tr>
+        <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</section>
+
+<section class="card mb-6">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <h2 class="section-title"><%= t('reports.tickets') %> — <%= t('reports.byBranch') %></h2>
+    <a class="btn btn-secondary btn-sm" href="/owner/reports/export.csv?type=tickets&<%= qs %>">⬇ <%= t('common.exportCsv') %></a>
+  </div>
+  <% if (!report.tickets.length) { %><p class="muted"><%= t('reports.noData') %></p><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th><%= t('common.branch') %></th><th><%= t('common.line') %></th><th><%= t('reports.tickets') %></th><th><%= t('reports.walkIns') %></th><th><%= t('reports.fromAppointments') %></th><th><%= t('reports.served') %></th><th><%= t('reports.avgWait') %></th><th><%= t('reports.p90Wait') %></th><th title="<%= t('reports.accuracyHint') %>"><%= t('reports.accuracy') %></th><th><%= t('reports.mae') %></th></tr></thead>
+      <tbody>
+        <% report.tickets.forEach((r) => { %>
+          <tr><td><%= r.branch_name %></td><td><%= r.line_name %></td><td class="num"><%= r.total %></td><td class="num"><%= r.walk_ins %></td><td class="num"><%= r.from_appointments %></td><td class="num"><%= r.served %></td><td class="num"><%= r.avg_wait ?? '—' %> <%= t('reports.minutesUnit') %></td><td class="num"><%= r.p90_wait ?? '—' %> <%= t('reports.minutesUnit') %></td><td class="num"><%= pct(r.accuracy) %></td><td class="num"><%= r.mae ?? '—' %> <%= t('reports.minutesUnit') %></td></tr>
+        <% }) %>
+      </tbody>
+    </table></div>
+    <p class="hint mt-2"><%= t('reports.accuracyHint') %></p>
+  <% } %>
+</section>
+
+<section class="card">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <h2 class="section-title"><%= t('reports.expectedFees') %> / <%= t('reports.confirmedFees') %></h2>
+    <div class="flex gap-2">
+      <a class="btn btn-secondary btn-sm" href="/owner/reports/export.csv?type=fees&<%= qs %>">⬇ <%= t('common.exportCsv') %></a>
+      <a class="btn btn-secondary btn-sm" href="/owner/reports/export.csv?type=daily&<%= qs %>">⬇ <%= t('reports.daily') %></a>
+    </div>
+  </div>
+  <% if (!report.fees.length) { %><p class="muted"><%= t('reports.noData') %></p><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th><%= t('common.branch') %></th><th><%= t('reports.expectedFees') %></th><th><%= t('reports.confirmedFees') %></th><th><%= t('payment.statusLabels.awaiting_verification') %></th></tr></thead>
+      <tbody>
+        <% report.fees.forEach((r) => { %>
+          <tr><td><%= r.branch_name %></td><td class="num"><%= fmt.money(r.expected, r.currency) %></td><td class="num font-semibold text-emerald-700"><%= fmt.money(r.confirmed, r.currency) %></td><td class="num"><%= r.awaiting %></td></tr>
+        <% }) %>
+      </tbody>
+    </table></div>
+    <p class="hint mt-2">🔒 <%= t('owner.paymentReadonly') %></p>
+  <% } %>
+</section>
+
+<script src="/vendor/chart/chart.umd.min.js" defer></script>

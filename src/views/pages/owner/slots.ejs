@@ -1,0 +1,99 @@
+<a class="text-sm text-brand-700 hover:underline" href="/owner/branches/<%= branch.id %>#lines">‹ <%= branch.name %></a>
+<div class="mb-6 mt-2 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="page-title"><%= t('owner.slotsTitle', { line: line.name }) %></h1>
+  <a class="btn btn-secondary btn-sm" href="/owner/lines/<%= line.id %>/edit"><%= t('owner.editLine') %></a>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-5">
+  <%# Day view of published slots %>
+  <section class="card space-y-4 lg:col-span-3" aria-labelledby="day-title">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="day-title" class="section-title"><%= t('owner.dayView') %>: <%= fmt.date(date, branch.timezone) %></h2>
+      <div class="flex items-center gap-1">
+        <a class="btn btn-ghost btn-sm" href="?date=<%= prevDate %>" aria-label="‹">→</a>
+        <form method="get" class="flex gap-1">
+          <input type="date" name="date" value="<%= date %>" class="input min-h-9 py-1" aria-label="<%= t('common.date') %>">
+          <button class="btn btn-secondary btn-sm" type="submit"><%= t('common.view') %></button>
+        </form>
+        <a class="btn btn-ghost btn-sm" href="?date=<%= nextDate %>" aria-label="›">←</a>
+      </div>
+    </div>
+
+    <% if (!slots.length) { %>
+      <p class="muted"><%= t('owner.noSlotsDay') %></p>
+    <% } else { %>
+      <ul class="grid gap-2 sm:grid-cols-2">
+        <% slots.forEach((s) => { %>
+          <li class="flex items-center justify-between gap-2 rounded-xl border p-2 <%= s.isOpen ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-100' %>">
+            <div>
+              <span class="num text-lg font-bold"><%= s.time %></span>
+              <span class="text-xs text-slate-500">· <%= s.durationMinutes %> <%= t('common.minutesShort') %></span>
+              <span class="block text-xs"><%= s.isOpen ? t('owner.slotOpen') : t('owner.slotClosed') %> · <%= t('owner.reserved') %> <span class="num"><%= s.reservedCount %>/<%= s.capacity %></span></span>
+            </div>
+            <div class="flex gap-1">
+              <form method="post" action="/owner/slots/<%= s.id %>/toggle">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="open" value="<%= s.isOpen ? '0' : '1' %>">
+                <button class="btn btn-ghost btn-sm" type="submit"><%= s.isOpen ? t('owner.closeSlot') : t('owner.openSlot') %></button>
+              </form>
+              <% if (s.booked === 0) { %>
+                <form method="post" action="/owner/slots/<%= s.id %>/delete" data-confirm="<%= t('common.delete') %>?">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button class="btn btn-ghost btn-sm text-rose-700" type="submit" aria-label="<%= t('common.delete') %>">✕</button>
+                </form>
+              <% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
+      <form method="post" action="/owner/lines/<%= line.id %>/slots/close-day" data-confirm="<%= t('owner.closeDayConfirm') %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="date" value="<%= date %>">
+        <button class="btn btn-secondary btn-sm" type="submit"><%= t('owner.closeDay') %></button>
+      </form>
+    <% } %>
+
+    <details class="rounded-xl border border-slate-200 p-3">
+      <summary class="cursor-pointer font-semibold"><%= t('owner.addSingleSlot') %></summary>
+      <form method="post" action="/owner/lines/<%= line.id %>/slots" class="mt-3 grid gap-3 sm:grid-cols-4">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="date" value="<%= date %>">
+        <%- include('../../partials/field', { name: 'time', label: t('common.time'), type: 'time', required: true, value: '' }) %>
+        <%- include('../../partials/field', { name: 'durationMinutes', label: t('owner.slotMinutes'), type: 'number', required: true, value: 20, attrs: 'min="5" max="480" dir="ltr"' }) %>
+        <%- include('../../partials/field', { name: 'capacity', label: t('owner.capacity'), type: 'number', required: true, value: 1, attrs: 'min="1" max="50" dir="ltr"' }) %>
+        <div class="flex items-end"><button class="btn btn-secondary w-full" type="submit"><%= t('common.add') %></button></div>
+      </form>
+    </details>
+  </section>
+
+  <%# Bulk generator %>
+  <form method="post" action="/owner/lines/<%= line.id %>/slots/generate" class="card space-y-4 lg:col-span-2" novalidate>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <h2 class="section-title"><%= t('owner.generator') %></h2>
+    <p class="hint"><%= t('owner.generatorHint') %></p>
+    <div class="grid grid-cols-2 gap-3">
+      <%- include('../../partials/field', { name: 'fromDate', label: t('owner.fromDate'), type: 'date', required: true, value: today }) %>
+      <%- include('../../partials/field', { name: 'toDate', label: t('owner.toDate'), type: 'date', required: true, value: defaultTo }) %>
+    </div>
+    <fieldset>
+      <legend class="label"><%= t('owner.weekdaysLabel') %></legend>
+      <div class="flex flex-wrap gap-2">
+        <% const oldDays = [].concat(old.weekdays || [1, 2, 3, 4, 5, 6]).map(Number); %>
+        <% [1, 2, 3, 4, 5, 6, 7].forEach((d) => { %>
+          <label class="cursor-pointer">
+            <input type="checkbox" name="weekdays" value="<%= d %>" class="peer sr-only" <%= oldDays.includes(d) ? 'checked' : '' %>>
+            <span class="inline-flex rounded-lg border border-slate-300 px-3 py-1 text-sm peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-400"><%= t(`weekdays.${d}`) %></span>
+          </label>
+        <% }) %>
+      </div>
+      <% if (errors.weekdays) { %><p class="field-error"><%= errors.weekdays %></p><% } %>
+    </fieldset>
+    <div class="grid grid-cols-2 gap-3">
+      <%- include('../../partials/field', { name: 'startTime', label: t('owner.startTime'), type: 'time', required: true, value: '09:00' }) %>
+      <%- include('../../partials/field', { name: 'endTime', label: t('owner.endTime'), type: 'time', required: true, value: '13:00' }) %>
+      <%- include('../../partials/field', { name: 'slotMinutes', label: t('owner.slotMinutes'), type: 'number', required: true, value: 20, attrs: 'min="5" max="480" dir="ltr"' }) %>
+      <%- include('../../partials/field', { name: 'capacity', label: t('owner.capacity'), type: 'number', required: true, value: 1, attrs: 'min="1" max="50" dir="ltr"' }) %>
+    </div>
+    <button type="submit" class="btn btn-primary w-full"><%= t('owner.generate') %></button>
+  </form>
+</div>

@@ -1,0 +1,18 @@
+<a class="text-sm text-brand-700 hover:underline" href="/admin/businesses">‹ <%= t('admin.businesses') %></a>
+<h1 class="page-title mb-6 mt-2"><%= t('admin.newBusiness') %></h1>
+<form method="post" action="/admin/businesses" class="card max-w-2xl space-y-4" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="grid gap-4 sm:grid-cols-2">
+    <%- include('../../partials/field', { name: 'name', label: t('common.business'), required: true }) %>
+    <%- include('../../partials/field', { name: 'slug', label: t('owner.slug'), required: true, hint: t('owner.slugHint'), attrs: 'dir="ltr"' }) %>
+  </div>
+  <%- include('../../partials/field', { name: 'phone', label: t('common.phone'), type: 'tel', attrs: 'dir="ltr"' }) %>
+  <h2 class="section-title pt-2"><%= t('admin.ownerSection') %></h2>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <%- include('../../partials/field', { name: 'ownerName', label: t('admin.ownerName'), required: true }) %>
+    <%- include('../../partials/field', { name: 'ownerEmail', label: t('common.email'), type: 'email', required: true, attrs: 'dir="ltr"' }) %>
+    <%- include('../../partials/field', { name: 'ownerPhone', label: t('common.phone'), type: 'tel', attrs: 'dir="ltr"' }) %>
+    <%- include('../../partials/field', { name: 'ownerPassword', label: t('owner.tempPassword'), type: 'password', required: true, value: '', hint: t('owner.tempPasswordHint'), attrs: 'dir="ltr" autocomplete="new-password"' }) %>
+  </div>
+  <button type="submit" class="btn btn-primary"><%= t('common.create') %></button>
+</form>

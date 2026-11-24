@@ -1,0 +1,57 @@
+<h1 class="page-title mb-4"><%= t('operator.appointmentsTitle') %></h1>
+
+<form method="get" class="card mb-4 grid gap-3 sm:grid-cols-5 sm:items-end">
+  <div class="sm:col-span-2">
+    <label class="label" for="q"><%= t('common.search') %></label>
+    <input id="q" name="q" value="<%= filters.q %>" class="input" placeholder="<%= t('owner.searchAppointments') %>">
+  </div>
+  <div>
+    <label class="label" for="date"><%= t('common.date') %></label>
+    <input id="date" name="date" type="date" value="<%= filters.date %>" class="input">
+  </div>
+  <div>
+    <label class="label" for="lineId"><%= t('common.line') %></label>
+    <select id="lineId" name="lineId" class="input">
+      <option value=""><%= t('common.all') %></option>
+      <% lines.forEach((l) => { %><option value="<%= l.id %>" <%= filters.lineId === l.id ? 'selected' : '' %>><%= l.branchName %> — <%= l.name %></option><% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="label" for="status"><%= t('common.status') %></label>
+    <select id="status" name="status" class="input">
+      <option value=""><%= t('common.all') %></option>
+      <% statuses.forEach((s) => { %><option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= t(`appointment.statusLabels.${s}`) %></option><% }) %>
+    </select>
+  </div>
+  <div class="flex gap-2 sm:col-span-5">
+    <button class="btn btn-primary btn-sm" type="submit"><%= t('common.filter') %></button>
+    <a class="btn btn-secondary btn-sm" href="?date=all"><%= t('common.all') %></a>
+  </div>
+</form>
+
+<% if (!list.length) { %>
+  <%- include('../../partials/empty', { message: t('common.noResults'), icon: '📅' }) %>
+<% } else { %>
+  <div class="card table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th><%= t('common.time') %></th><th><%= t('common.customer') %></th><th><%= t('common.line') %></th>
+          <th><%= t('common.status') %></th><th><%= t('payment.typeLabel') %></th><th><%= t('common.reference') %></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% list.forEach((row) => { const a = row.appointment; %>
+          <tr>
+            <td class="num whitespace-nowrap"><%= a.localDate %> <strong><%= fmt.hhmm(a.localTime) %></strong></td>
+            <td><a class="font-semibold text-brand-700 hover:underline" href="/operator/appointments/<%= a.id %>"><%= row.customerName || '—' %></a><br><span class="num text-xs text-slate-500"><%= fmt.maskPhone(row.customerPhone) %></span></td>
+            <td><%= row.branchName %><br><span class="text-xs text-slate-500"><%= row.lineName %></span></td>
+            <td><%- include('../../partials/badge', { kind: 'appointment', value: a.status }) %></td>
+            <td><%- include('../../partials/badge', { kind: 'payment', value: a.paymentStatus }) %></td>
+            <td class="num text-xs"><%= a.reference %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

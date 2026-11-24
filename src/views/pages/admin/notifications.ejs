@@ -1,0 +1,28 @@
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="page-title"><%= t('admin.notifications') %></h1>
+  <div class="flex gap-2">
+    <a class="btn btn-sm <%= !channel ? 'btn-primary' : 'btn-secondary' %>" href="/admin/notifications"><%= t('common.all') %></a>
+    <a class="btn btn-sm <%= channel === 'sms' ? 'btn-primary' : 'btn-secondary' %>" href="?channel=sms"><%= t('notificationsLog.channels.sms') %></a>
+    <a class="btn btn-sm <%= channel === 'push' ? 'btn-primary' : 'btn-secondary' %>" href="?channel=push"><%= t('notificationsLog.channels.push') %></a>
+  </div>
+</div>
+<% if (!list.length) { %>
+  <%- include('../../partials/empty', { message: t('common.noResults'), icon: '✉️' }) %>
+<% } else { %>
+  <div class="card table-wrap"><table class="table">
+    <thead><tr><th><%= t('common.date') %></th><th><%= t('notificationsLog.channel') %></th><th><%= t('notificationsLog.kind') %></th><th><%= t('notificationsLog.to') %></th><th><%= t('common.status') %></th><th><%= t('notificationsLog.attempts') %></th><th><%= t('common.details') %></th></tr></thead>
+    <tbody>
+      <% list.forEach((n) => { %>
+        <tr>
+          <td class="num whitespace-nowrap text-xs"><%= fmt.dateTime(n.createdAt, timezone) %></td>
+          <td><%= t(`notificationsLog.channels.${n.channel}`) %></td>
+          <td><code class="text-xs" dir="ltr"><%= n.kind %></code></td>
+          <td class="num text-xs"><%= n.toPhone ? fmt.maskPhone(n.toPhone) : (n.userId ? `#${n.userId}` : '—') %></td>
+          <td><span class="badge <%= { delivered: 'badge-green', sent: 'badge-blue', failed: 'badge-red', queued: 'badge-gray', sending: 'badge-amber' }[n.status] %>"><%= t(`notificationsLog.statuses.${n.status}`) %></span></td>
+          <td class="num"><%= n.attempts %></td>
+          <td class="max-w-sm text-xs"><%= n.body %><% if (n.lastError) { %><br><span class="text-rose-700" dir="ltr"><%= n.lastError %></span><% } %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table></div>
+<% } %>

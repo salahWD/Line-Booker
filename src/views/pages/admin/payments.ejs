@@ -1,0 +1,60 @@
+<h1 class="page-title mb-2"><%= t('admin.payments') %></h1>
+<p class="alert alert-info mb-6"><span aria-hidden="true">🔎</span><span><%= t('admin.paymentsIntro') %></span></p>
+
+<% if (!pending.length) { %>
+  <%- include('../../partials/empty', { message: t('admin.noPending'), icon: '✅' }) %>
+<% } %>
+<ul class="mb-10 space-y-4">
+  <% pending.forEach((p) => { const s = p.submission; %>
+    <li class="card grid gap-4 md:grid-cols-3">
+      <div class="space-y-1 md:col-span-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="num text-lg font-bold tracking-wider"><%= p.reference %></span>
+          <%- include('../../partials/badge', { kind: 'appointment', value: p.appointmentStatus }) %>
+        </div>
+        <p class="font-semibold"><%= p.businessName %> — <%= p.branchName %> · <%= p.lineName %></p>
+        <p class="muted"><%= p.customerName %> · <span class="num"><%= p.customerPhone %></span></p>
+        <dl class="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+          <div class="rounded-lg bg-amber-50 p-2"><dt class="text-xs text-amber-800"><%= t('payment.amountLabel') %></dt><dd class="num text-lg font-bold"><%= fmt.money(p.amountDue, p.currency) %></dd></div>
+          <div class="rounded-lg bg-slate-50 p-2"><dt class="text-xs text-slate-500"><%= t('payment.transactionRef') %></dt><dd class="num font-bold break-all"><%= s.transactionRef %></dd></div>
+          <div class="rounded-lg bg-slate-50 p-2"><dt class="text-xs text-slate-500"><%= t('admin.submittedAt') %></dt><dd class="num"><%= fmt.dateTime(s.createdAt, p.timezone) %></dd></div>
+        </dl>
+        <p class="text-xs text-slate-500"><%= t('payment.typeLabel') %>: <%= t(`payment.feeTypes.${p.feeType}`) %> · <%= t('appointment.when') %>: <span class="num"><%= fmt.dateTime(p.startsAt, p.timezone) %></span></p>
+        <% if (s.proofPath) { %><a class="btn btn-ghost btn-sm" href="/admin/payments/<%= s.id %>/proof" target="_blank" rel="noopener">📎 <%= t('payment.viewProof') %></a><% } %>
+      </div>
+      <div class="space-y-3">
+        <form method="post" action="/admin/payments/<%= s.id %>/confirm" data-confirm="<%= t('admin.confirmPaymentConfirm') %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-primary w-full" type="submit">✅ <%= t('admin.confirmPayment') %></button>
+        </form>
+        <form method="post" action="/admin/payments/<%= s.id %>/reject" class="space-y-2">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="label" for="reason-<%= s.id %>"><%= t('admin.rejectReason') %></label>
+          <input id="reason-<%= s.id %>" name="reason" class="input" required maxlength="300">
+          <button class="btn btn-danger w-full" type="submit"><%= t('admin.rejectPayment') %></button>
+        </form>
+      </div>
+    </li>
+  <% }) %>
+</ul>
+
+<section class="card">
+  <h2 class="section-title mb-3"><%= t('admin.history') %></h2>
+  <% if (!history.length) { %><p class="muted"><%= t('common.noResults') %></p><% } else { %>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th><%= t('common.reference') %></th><th><%= t('common.branch') %></th><th><%= t('common.amount') %></th><th><%= t('payment.transactionRef') %></th><th><%= t('common.status') %></th><th><%= t('common.date') %></th></tr></thead>
+      <tbody>
+        <% history.forEach((p) => { const s = p.submission; %>
+          <tr>
+            <td class="num"><%= p.reference %></td>
+            <td><%= p.businessName %> — <%= p.branchName %></td>
+            <td class="num"><%= fmt.money(p.amountDue, p.currency) %></td>
+            <td class="num"><%= s.transactionRef %></td>
+            <td><span class="badge <%= s.status === 'confirmed' ? 'badge-green' : 'badge-red' %>"><%= t(`payment.statusLabels.${s.status}`) %></span><% if (s.reviewNote) { %><br><span class="text-xs text-slate-500"><%= s.reviewNote %></span><% } %></td>
+            <td class="num text-xs"><%= fmt.dateTime(s.reviewedAt, p.timezone) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</section>

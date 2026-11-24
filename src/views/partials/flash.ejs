@@ -1,0 +1,10 @@
+<% if (flash.length) { %>
+  <div class="mb-4 space-y-2" role="status" aria-live="polite">
+    <% flash.forEach((f) => { %>
+      <div class="alert alert-<%= f.type === 'error' ? 'error' : f.type === 'success' ? 'success' : 'info' %>" data-flash>
+        <span aria-hidden="true"><%= f.type === 'error' ? '⚠️' : f.type === 'success' ? '✅' : 'ℹ️' %></span>
+        <p class="flex-1"><%= f.message %></p>
+      </div>
+    <% }) %>
+  </div>
+<% } %>

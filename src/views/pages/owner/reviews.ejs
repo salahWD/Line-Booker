@@ -1,0 +1,32 @@
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="page-title"><%= t('owner.reviews') %></h1>
+  <form method="get" class="flex gap-2">
+    <label for="branchId" class="sr-only"><%= t('common.branch') %></label>
+    <select id="branchId" name="branchId" class="input">
+      <option value=""><%= t('common.all') %></option>
+      <% branches.forEach((b) => { %><option value="<%= b.id %>" <%= branchId === b.id ? 'selected' : '' %>><%= b.name %></option><% }) %>
+    </select>
+    <button class="btn btn-secondary" type="submit"><%= t('common.filter') %></button>
+  </form>
+</div>
+
+<% if (!list.length) { %>
+  <%- include('../../partials/empty', { message: t('branch.noReviews'), icon: '⭐' }) %>
+<% } %>
+<ul class="space-y-4">
+  <% list.forEach(({ review, customerName, branchName, lineName, reference }) => { %>
+    <li class="card space-y-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="text-amber-500 text-lg" aria-label="<%= t('reviews.stars', { n: review.rating }) %>"><%= '★'.repeat(review.rating) %><span class="text-slate-300"><%= '★'.repeat(5 - review.rating) %></span></p>
+        <p class="muted"><%= customerName %> · <%= branchName %> — <%= lineName %> · <span class="num"><%= reference %></span></p>
+      </div>
+      <% if (review.comment) { %><p><%= review.comment %></p><% } %>
+      <form method="post" action="/owner/reviews/<%= review.id %>/reply" class="space-y-2">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="label" for="reply-<%= review.id %>"><%= t('reviews.reply') %></label>
+        <textarea id="reply-<%= review.id %>" name="reply" rows="2" class="input" maxlength="1000" placeholder="<%= t('reviews.replyPlaceholder') %>" required><%= review.ownerReply || '' %></textarea>
+        <button class="btn btn-secondary btn-sm" type="submit"><%= t('reviews.reply') %></button>
+      </form>
+    </li>
+  <% }) %>
+</ul>

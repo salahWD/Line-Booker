@@ -1,0 +1,10 @@
+<div class="mx-auto max-w-md">
+  <form method="post" action="/welcome" class="card space-y-4">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="next" value="<%= next %>">
+    <h1 class="page-title"><%= t('auth.welcomeTitle') %></h1>
+    <p class="muted"><%= t('auth.welcomeIntro') %></p>
+    <%- include('../../partials/field', { name: 'name', label: t('common.name'), required: true, attrs: 'autocomplete="name" autofocus maxlength="80"' }) %>
+    <button type="submit" class="btn btn-primary w-full"><%= t('auth.continue') %></button>
+  </form>
+</div>

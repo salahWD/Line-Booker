@@ -1,0 +1,23 @@
+<%# Audit log table (owners see their business; the platform admin sees everything). %>
+<% if (!logs.length) { %>
+  <%- include('empty', { message: t('common.noResults'), icon: '📜' }) %>
+<% } else { %>
+  <div class="card table-wrap">
+    <table class="table">
+      <thead><tr><th><%= t('common.date') %></th><th><%= t('common.by') %></th><th><%= t('common.actions') %></th><th><%= t('common.details') %></th></tr></thead>
+      <tbody>
+        <% logs.forEach(({ log, actorName }) => { %>
+          <tr>
+            <td class="num whitespace-nowrap text-xs"><%= fmt.dateTime(log.createdAt, timezone) %></td>
+            <td><%= actorName || '—' %></td>
+            <td><code class="rounded bg-slate-100 px-1 text-xs" dir="ltr"><%= log.action %></code> <span class="text-xs text-slate-500">#<%= log.entityId %></span></td>
+            <td class="max-w-md text-xs">
+              <% if (log.before && Object.keys(log.before).length) { %><div class="break-all text-rose-700" dir="ltr">− <%= JSON.stringify(log.before) %></div><% } %>
+              <% if (log.after && Object.keys(log.after).length) { %><div class="break-all text-emerald-700" dir="ltr">+ <%= JSON.stringify(log.after) %></div><% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

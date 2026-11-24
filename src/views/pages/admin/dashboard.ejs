@@ -1,0 +1,27 @@
+<h1 class="page-title mb-6"><%= t('admin.title') %></h1>
+<div class="mb-8 grid grid-cols-2 gap-3 md:grid-cols-5">
+  <a href="/admin/payments" class="stat ring-2 ring-amber-300 hover:bg-amber-50"><span class="stat-label"><%= t('admin.stats.pendingPayments') %></span><span class="stat-value num"><%= stats.pendingPayments %></span></a>
+  <div class="stat"><span class="stat-label"><%= t('admin.stats.businesses') %></span><span class="stat-value num"><%= stats.businesses %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('admin.stats.branches') %></span><span class="stat-value num"><%= stats.branches %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('admin.stats.customers') %></span><span class="stat-value num"><%= stats.customers %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('admin.stats.ticketsToday') %></span><span class="stat-value num"><%= stats.ticketsToday %></span></div>
+</div>
+
+<section class="card">
+  <div class="mb-3 flex items-center justify-between">
+    <h2 class="section-title"><%= t('admin.payments') %></h2>
+    <a class="btn btn-primary btn-sm" href="/admin/payments"><%= t('common.view') %></a>
+  </div>
+  <% if (!pending.length) { %>
+    <p class="muted"><%= t('admin.noPending') %></p>
+  <% } else { %>
+    <ul class="divide-y divide-slate-100">
+      <% pending.forEach((p) => { %>
+        <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+          <span><span class="num font-bold"><%= p.reference %></span> · <%= p.businessName %> — <%= p.branchName %></span>
+          <span class="num font-semibold"><%= fmt.money(p.amountDue, p.currency) %></span>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
+</section>

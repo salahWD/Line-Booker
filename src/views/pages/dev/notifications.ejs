@@ -1,0 +1,22 @@
+<div class="mx-auto max-w-3xl" x-data="devInbox">
+  <div class="mb-4 rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50 p-4">
+    <h1 class="text-xl font-bold">🧪 <%= t('dev.title') %></h1>
+    <p class="text-sm text-amber-900"><%= t('dev.intro') %></p>
+  </div>
+  <% if (!messages.length) { %>
+    <%- include('../../partials/empty', { message: t('dev.empty'), icon: '📭' }) %>
+  <% } %>
+  <ul class="space-y-3">
+    <% messages.forEach((m) => { %>
+      <li class="card">
+        <div class="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span class="badge <%= m.channel === 'sms' ? 'badge-blue' : 'badge-brand' %>"><%= t(`notificationsLog.channels.${m.channel}`) %></span>
+          <span class="num"><%= m.to %></span>
+          <span class="num"><%= fmt.dateTime(m.at, timezone) %></span>
+        </div>
+        <p class="whitespace-pre-line"><%= m.body %></p>
+        <% if (m.link) { %><a class="text-sm text-brand-700 underline" href="<%= m.link %>"><%= m.link %></a><% } %>
+      </li>
+    <% }) %>
+  </ul>
+</div>

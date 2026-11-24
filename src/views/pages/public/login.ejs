@@ -1,0 +1,18 @@
+<div class="mx-auto max-w-md">
+  <div class="card space-y-5">
+    <div>
+      <h1 class="page-title"><%= t('auth.customerTitle') %></h1>
+      <p class="muted mt-1"><%= t('auth.customerIntro') %></p>
+    </div>
+    <form method="post" action="/login" class="space-y-4" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="next" value="<%= next %>">
+      <%- include('../../partials/field', { name: 'phone', label: t('common.phone'), type: 'tel', required: true, attrs: `inputmode="tel" autocomplete="tel" dir="ltr" placeholder="${t('auth.phonePlaceholder')}" autofocus` }) %>
+      <button type="submit" class="btn btn-primary w-full"><%= t('auth.sendCode') %></button>
+    </form>
+    <% if (mockNotifications) { %>
+      <p class="alert alert-info"><span aria-hidden="true">🧪</span><span><%= t('auth.devHint') %> <a class="font-semibold underline" href="/dev/notifications" target="_blank" rel="noopener"><%= t('auth.devLink') %></a></span></p>
+    <% } %>
+  </div>
+  <p class="mt-4 text-center text-sm"><a class="text-brand-700 hover:underline" href="/staff/login"><%= t('nav.staffLogin') %></a></p>
+</div>

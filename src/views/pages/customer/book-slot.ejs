@@ -1,0 +1,62 @@
+<nav class="mb-2 text-sm" aria-label="breadcrumb">
+  <a class="text-brand-700 hover:underline" href="/b/<%= branch.slug %>"><%= branch.name %></a>
+  <% if (hasManyLines) { %> · <a class="text-brand-700 hover:underline" href="/book/<%= branch.slug %>"><%= t('appointment.chooseLine') %></a><% } %>
+</nav>
+<h1 class="page-title"><%= t('appointment.bookTitle') %> — <%= line.name %></h1>
+<p class="muted mb-6"><%= businessName %></p>
+
+<% if (!dates.length) { %>
+  <%- include('../../partials/empty', { message: t('appointment.noDates'), icon: '📅' }) %>
+<% } else { %>
+  <section class="mb-6" aria-labelledby="dates-title">
+    <h2 id="dates-title" class="section-title mb-3">1. <%= t('appointment.chooseDate') %></h2>
+    <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2" role="list">
+      <% dates.forEach((d) => { const active = d.date === selectedDate; %>
+        <a role="listitem" href="?date=<%= d.date %>" class="chip <%= active ? 'chip-active' : '' %>" <%= active ? 'aria-current=date' : '' %>>
+          <span class="font-semibold"><%= d.weekday %></span>
+          <span class="num"><%= d.day %></span>
+          <span class="text-xs <%= active ? 'text-brand-100' : 'text-slate-500' %>"><%= t('appointment.spotsLeft', { count: d.remaining }) %></span>
+        </a>
+      <% }) %>
+    </div>
+  </section>
+
+  <form method="post" action="/book/<%= branch.slug %>/<%= line.id %>" class="space-y-6">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <section aria-labelledby="slots-title">
+      <h2 id="slots-title" class="section-title mb-3">2. <%= t('appointment.chooseTime') %> — <%= fmt.date(selectedDate, branch.timezone) %></h2>
+      <% if (!slots.length) { %>
+        <p class="muted"><%= t('appointment.noSlots') %></p>
+      <% } else { %>
+        <fieldset class="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
+          <legend class="sr-only"><%= t('appointment.chooseTime') %></legend>
+          <% slots.forEach((s, i) => { %>
+            <label class="cursor-pointer">
+              <input type="radio" name="slotId" value="<%= s.id %>" class="peer sr-only" required <%= i === 0 && slots.length === 1 ? 'checked' : '' %>>
+              <span class="flex flex-col items-center rounded-xl border border-slate-300 bg-white px-2 py-2 peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-400">
+                <span class="num text-lg font-bold"><%= s.time %></span>
+                <% if (s.remaining > 1) { %><span class="text-xs opacity-80"><%= t('appointment.spotsLeft', { count: s.remaining }) %></span><% } %>
+              </span>
+            </label>
+          <% }) %>
+        </fieldset>
+        <% if (errors.slotId) { %><p class="field-error"><%= errors.slotId %></p><% } %>
+      <% } %>
+    </section>
+
+    <% if (slots.length) { %>
+      <section class="card space-y-4">
+        <%- include('../../partials/field', { name: 'note', label: t('appointment.noteLabel'), type: 'textarea', attrs: `maxlength="500" placeholder="${t('appointment.notePlaceholder')}"` }) %>
+        <p class="alert <%= free ? 'alert-success' : 'alert-info' %>">
+          <span aria-hidden="true"><%= free ? '✅' : '💳' %></span>
+          <span><%= free ? t('appointment.freeNotice') : t('appointment.feeNotice', { minutes: holdMinutes, amount: feeText }) %></span>
+        </p>
+        <% if (currentUser && currentUser.role === 'customer') { %>
+          <button type="submit" class="btn btn-primary btn-lg w-full"><%= t('appointment.confirmBooking') %></button>
+        <% } else { %>
+          <a href="/login?next=<%= encodeURIComponent(`/book/${branch.slug}/${line.id}?date=${selectedDate}`) %>" class="btn btn-primary btn-lg w-full"><%= t('nav.login') %></a>
+        <% } %>
+      </section>
+    <% } %>
+  </form>
+<% } %>

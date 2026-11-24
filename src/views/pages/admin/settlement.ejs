@@ -1,0 +1,20 @@
+<h1 class="page-title mb-2"><%= t('admin.settlement') %></h1>
+<p class="muted mb-6"><%= t('admin.settlementIntro') %></p>
+<form method="get" class="card mb-6 flex flex-wrap items-end gap-3">
+  <div><label class="label" for="from"><%= t('common.from') %></label><input id="from" type="date" name="from" value="<%= report.period.from %>" class="input"></div>
+  <div><label class="label" for="to"><%= t('common.to') %></label><input id="to" type="date" name="to" value="<%= report.period.to %>" class="input"></div>
+  <button class="btn btn-primary" type="submit"><%= t('reports.apply') %></button>
+  <a class="btn btn-secondary" href="/admin/settlement?from=<%= report.period.from %>&to=<%= report.period.to %>&format=csv">⬇ <%= t('common.exportCsv') %></a>
+</form>
+<% if (!report.rows.length) { %>
+  <%- include('../../partials/empty', { message: t('reports.noData'), icon: '💵' }) %>
+<% } else { %>
+  <div class="card table-wrap"><table class="table">
+    <thead><tr><th><%= t('common.business') %></th><th><%= t('common.branch') %></th><th><%= t('reports.appointments') %></th><th><%= t('reports.confirmedFees') %></th></tr></thead>
+    <tbody>
+      <% report.rows.forEach((r) => { %>
+        <tr><td class="font-semibold"><%= r.business_name %></td><td><%= r.branch_name %></td><td class="num"><%= r.count %></td><td class="num font-bold"><%= fmt.money(r.total, r.currency) %></td></tr>
+      <% }) %>
+    </tbody>
+  </table></div>
+<% } %>

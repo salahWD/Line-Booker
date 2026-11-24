@@ -1,0 +1,9 @@
+<footer class="mt-10 border-t border-slate-200 bg-white">
+  <div class="container-app flex flex-wrap items-center justify-between gap-3 py-5 text-sm text-slate-500">
+    <p><%= appName %> — <%= t('app.tagline') %></p>
+    <div class="flex gap-3">
+      <% if (!currentUser) { %><a class="hover:text-brand-700" href="/staff/login"><%= t('nav.staffLogin') %></a><% } %>
+      <% if (mockNotifications) { %><a class="hover:text-brand-700" href="/dev/notifications"><%= t('auth.devLink') %></a><% } %>
+    </div>
+  </div>
+</footer>

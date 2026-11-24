@@ -1,0 +1,23 @@
+<%# Customer / public header. Staff see a link to their dashboard. %>
+<header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+  <div class="container-app flex h-16 items-center justify-between gap-3">
+    <a href="/" class="flex items-center gap-2 text-xl font-bold text-brand-700">
+      <img src="/images/icon.svg" alt="" class="size-8" width="32" height="32">
+      <span><%= appName %></span>
+    </a>
+    <nav class="flex items-center gap-1" aria-label="<%= t('nav.menu') %>">
+      <a href="/" class="nav-link <%= currentPath === '/' ? 'nav-link-active' : '' %>"><%= t('nav.home') %></a>
+      <% if (currentUser && currentUser.role === 'customer') { %>
+        <a href="/me" class="nav-link <%= currentPath.startsWith('/me') ? 'nav-link-active' : '' %>"><%= t('nav.myArea') %></a>
+        <form method="post" action="/logout">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="nav-link" type="submit"><%= t('nav.logout') %></button>
+        </form>
+      <% } else if (currentUser) { %>
+        <a href="<%= { platform_admin: '/admin', business_owner: '/owner', branch_operator: '/operator' }[currentUser.role] %>" class="btn btn-secondary btn-sm"><%= currentUser.role === 'platform_admin' ? t('nav.admin') : currentUser.role === 'business_owner' ? t('nav.owner') : t('nav.operator') %></a>
+      <% } else { %>
+        <a href="/login" class="btn btn-primary btn-sm"><%= t('nav.login') %></a>
+      <% } %>
+    </nav>
+  </div>
+</header>

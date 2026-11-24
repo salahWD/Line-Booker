@@ -1,0 +1,13 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title><%= typeof title !== 'undefined' && title ? `${title} · ${appName}` : appName %></title>
+<meta name="description" content="<%= t('app.tagline') %>">
+<meta name="csrf-token" content="<%= csrfToken %>">
+<meta name="theme-color" content="#1f776d">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/images/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/images/icon-192.png">
+<link rel="preload" href="/fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/app.css">
+<%# Strings for the browser scripts (escaped JSON, not executed). %>
+<script type="application/json" id="i18n"><%- clientStrings %></script>

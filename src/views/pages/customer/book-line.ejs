@@ -1,0 +1,15 @@
+<p class="text-sm font-semibold text-brand-700"><%= businessName %> · <%= branch.name %></p>
+<h1 class="page-title mb-6"><%= t('appointment.chooseLine') %></h1>
+<ul class="grid gap-3 sm:grid-cols-2">
+  <% lines.forEach((line) => { %>
+    <li>
+      <a href="/book/<%= branch.slug %>/<%= line.id %>" class="card flex items-center justify-between gap-3 hover:border-brand-300">
+        <span>
+          <span class="block text-lg font-bold"><%= line.name %></span>
+          <% if (line.description) { %><span class="muted"><%= line.description %></span><% } %>
+        </span>
+        <span aria-hidden="true" class="text-2xl text-brand-600">‹</span>
+      </a>
+    </li>
+  <% }) %>
+</ul>

@@ -1,0 +1,33 @@
+<a class="text-sm text-brand-700 hover:underline" href="/me/appointments/<%= a.reference %>">‹ <%= t('common.back') %></a>
+<h1 class="page-title mb-1"><%= t('appointment.rescheduleTitle') %></h1>
+<p class="muted mb-6"><%= view.branchName %> · <%= view.lineName %> — <%= t('appointment.when') %>: <%= fmt.date(a.localDate, view.timezone) %> <span class="num"><%= fmt.hhmm(a.localTime) %></span></p>
+
+<% if (!dates.length) { %>
+  <%- include('../../partials/empty', { message: t('appointment.noDates'), icon: '📅' }) %>
+<% } else { %>
+  <div class="-mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-2">
+    <% dates.forEach((d) => { const active = d.date === selectedDate; %>
+      <a href="?date=<%= d.date %>" class="chip <%= active ? 'chip-active' : '' %>">
+        <span class="font-semibold"><%= d.weekday %></span>
+        <span class="num"><%= d.day %></span>
+      </a>
+    <% }) %>
+  </div>
+  <form method="post" action="/me/appointments/<%= a.reference %>/reschedule" class="space-y-4">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <% if (!slots.length) { %>
+      <p class="muted"><%= t('appointment.noSlots') %></p>
+    <% } else { %>
+      <fieldset class="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <legend class="sr-only"><%= t('appointment.chooseTime') %></legend>
+        <% slots.forEach((s) => { %>
+          <label class="cursor-pointer">
+            <input type="radio" name="slotId" value="<%= s.id %>" class="peer sr-only" required>
+            <span class="flex justify-center rounded-xl border border-slate-300 bg-white px-2 py-2 num font-bold peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white"><%= s.time %></span>
+          </label>
+        <% }) %>
+      </fieldset>
+      <button type="submit" class="btn btn-primary w-full sm:w-auto"><%= t('appointment.reschedule') %></button>
+    <% } %>
+  </form>
+<% } %>

@@ -1,0 +1,27 @@
+<%
+  const branchName = Object.fromEntries(branches.map((b) => [b.id, b.name]));
+%>
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="page-title"><%= t('owner.operators') %></h1>
+  <a class="btn btn-primary" href="/owner/operators/new">➕ <%= t('owner.newOperator') %></a>
+</div>
+<% if (!list.length) { %>
+  <%- include('../../partials/empty', { message: t('common.noResults'), icon: '👥' }) %>
+<% } else { %>
+  <div class="card table-wrap">
+    <table class="table">
+      <thead><tr><th><%= t('common.name') %></th><th><%= t('auth.identifier') %></th><th><%= t('owner.assignedBranches') %></th><th><%= t('common.status') %></th><th></th></tr></thead>
+      <tbody>
+        <% list.forEach((op) => { %>
+          <tr>
+            <td class="font-semibold"><%= op.name %></td>
+            <td class="num text-xs"><%= op.email || '' %><br><%= op.phone || '' %></td>
+            <td><%= op.branchIds.map((id) => branchName[id]).filter(Boolean).join('، ') || '—' %></td>
+            <td><span class="badge <%= op.isActive ? 'badge-green' : 'badge-gray' %>"><%= op.isActive ? t('common.active') : t('common.inactive') %></span></td>
+            <td><a class="btn btn-ghost btn-sm" href="/owner/operators/<%= op.id %>"><%= t('common.edit') %></a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

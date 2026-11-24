@@ -1,0 +1,31 @@
+<%
+  const op = operator || {};
+  const selected = (old.branchIds ? [].concat(old.branchIds) : op.branchIds || []).map(Number);
+%>
+<a class="text-sm text-brand-700 hover:underline" href="/owner/operators">‹ <%= t('owner.operators') %></a>
+<h1 class="page-title mb-6 mt-2"><%= operator ? t('owner.editOperator') : t('owner.newOperator') %></h1>
+
+<form method="post" action="<%= operator ? `/owner/operators/${operator.id}` : '/owner/operators' %>" class="card max-w-2xl space-y-4" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <%- include('../../partials/field', { name: 'name', label: t('common.name'), required: true, value: op.name }) %>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <%- include('../../partials/field', { name: 'email', label: t('common.email'), type: 'email', value: op.email, attrs: 'dir="ltr" autocomplete="off"' }) %>
+    <%- include('../../partials/field', { name: 'phone', label: t('common.phone'), type: 'tel', value: op.phone, attrs: 'dir="ltr"' }) %>
+  </div>
+  <%- include('../../partials/field', { name: 'password', label: operator ? t('owner.resetPassword') : t('owner.tempPassword'), type: 'password', required: !operator, value: '', hint: t('owner.tempPasswordHint'), attrs: 'dir="ltr" autocomplete="new-password"' }) %>
+  <fieldset>
+    <legend class="label"><%= t('owner.assignedBranches') %></legend>
+    <div class="grid gap-2 sm:grid-cols-2">
+      <% branches.forEach((b) => { %>
+        <label class="flex items-center gap-2 rounded-lg border border-slate-200 p-2">
+          <input type="checkbox" name="branchIds" value="<%= b.id %>" class="checkbox" <%= selected.includes(b.id) ? 'checked' : '' %>>
+          <span><%= b.name %></span>
+        </label>
+      <% }) %>
+    </div>
+  </fieldset>
+  <% if (operator) { %>
+    <%- include('../../partials/checkbox', { name: 'isActive', label: t('common.active'), checked: op.isActive }) %>
+  <% } %>
+  <button type="submit" class="btn btn-primary"><%= operator ? t('common.saveChanges') : t('common.create') %></button>
+</form>

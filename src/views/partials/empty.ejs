@@ -1,0 +1,8 @@
+<%# Empty state. include('empty', { message, icon?, action?: { href, label } }) %>
+<div class="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center">
+  <span class="text-4xl" aria-hidden="true"><%= typeof icon !== 'undefined' ? icon : '🗂️' %></span>
+  <p class="text-slate-600"><%= message %></p>
+  <% if (typeof action !== 'undefined' && action) { %>
+    <a class="btn btn-primary btn-sm" href="<%= action.href %>"><%= action.label %></a>
+  <% } %>
+</div>

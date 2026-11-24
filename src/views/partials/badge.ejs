@@ -1,0 +1,12 @@
+<%#
+  Status badge. include('badge', { kind: 'appointment' | 'payment' | 'ticket', value })
+%>
+<%
+  const colors = {
+    appointment: { held: 'amber', confirmed: 'green', checked_in: 'blue', completed: 'brand', cancelled: 'gray', no_show: 'red', expired: 'gray' },
+    payment: { not_required: 'gray', unpaid: 'amber', awaiting_verification: 'blue', confirmed: 'green', rejected: 'red' },
+    ticket: { waiting: 'blue', called: 'amber', completed: 'green', skipped: 'red', cancelled: 'gray', expired: 'gray' },
+  };
+  const labels = { appointment: 'appointment.statusLabels', payment: 'payment.statusLabels', ticket: 'ticket.statusLabels' };
+%>
+<span class="badge badge-<%= colors[kind][value] || 'gray' %>"><%= t(`${labels[kind]}.${value}`) %></span>

@@ -1,0 +1,42 @@
+<%#
+  Notes list + form. include('notes', { notes, action, staff: boolean, tz })
+  Customer pages only ever receive "customer" and "shared" notes (filtered in note.service).
+%>
+<section id="notes" class="card space-y-4" aria-labelledby="notes-title">
+  <h2 id="notes-title" class="section-title"><%= t('notes.title') %></h2>
+  <% if (!notes.length) { %>
+    <p class="muted"><%= t('notes.empty') %></p>
+  <% } else { %>
+    <ul class="space-y-3">
+      <% notes.forEach((n) => { %>
+        <li class="rounded-xl border p-3 <%= n.kind === 'internal' ? 'border-amber-200 bg-amber-50' : n.kind === 'shared' ? 'border-brand-200 bg-brand-50' : 'border-slate-200 bg-slate-50' %>">
+          <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <% if (staff) { %>
+              <span class="badge <%= n.kind === 'internal' ? 'badge-amber' : n.kind === 'shared' ? 'badge-brand' : 'badge-gray' %>"><%= t(`notes.kinds.${n.kind}`) %></span>
+              <span><%= n.authorName %></span>
+            <% } else { %>
+              <span class="badge <%= n.kind === 'shared' ? 'badge-brand' : 'badge-gray' %>"><%= n.kind === 'shared' ? t('notes.fromBranch') : t('notes.fromYou') %></span>
+            <% } %>
+            <span class="num"><%= fmt.dateTime(n.createdAt, tz) %></span>
+          </div>
+          <p class="whitespace-pre-line"><%= n.body %></p>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
+  <form method="post" action="<%= action %>" class="space-y-3">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div>
+      <label for="note-body" class="label"><%= t('notes.add') %></label>
+      <textarea id="note-body" name="body" rows="2" class="input" required maxlength="1000" placeholder="<%= t('notes.placeholder') %>"></textarea>
+    </div>
+    <% if (staff) { %>
+      <fieldset class="flex flex-wrap gap-4 text-sm">
+        <legend class="label"><%= t('notes.kindLabel') %></legend>
+        <label class="flex items-center gap-2"><input type="radio" name="kind" value="internal" checked class="accent-brand-600"> <%= t('notes.kinds.internal') %></label>
+        <label class="flex items-center gap-2"><input type="radio" name="kind" value="shared" class="accent-brand-600"> <%= t('notes.kinds.shared') %></label>
+      </fieldset>
+    <% } %>
+    <button type="submit" class="btn btn-secondary btn-sm"><%= t('common.add') %></button>
+  </form>
+</section>

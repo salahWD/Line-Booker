@@ -1,0 +1,13 @@
+<div class="mx-auto max-w-md">
+  <form method="post" action="/staff/login" class="card space-y-4">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="next" value="<%= next %>">
+    <div>
+      <h1 class="page-title"><%= t('auth.staffTitle') %></h1>
+      <p class="muted mt-1"><%= t('auth.staffIntro') %></p>
+    </div>
+    <%- include('../../partials/field', { name: 'identifier', label: t('auth.identifier'), required: true, attrs: 'autocomplete="username" dir="ltr" autofocus' }) %>
+    <%- include('../../partials/field', { name: 'password', label: t('common.password'), type: 'password', required: true, value: '', attrs: 'autocomplete="current-password" dir="ltr"' }) %>
+    <button type="submit" class="btn btn-primary w-full"><%= t('auth.signIn') %></button>
+  </form>
+</div>

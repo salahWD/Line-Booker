@@ -1,0 +1,8 @@
+<h1 class="page-title mb-6"><%= t('admin.settings') %></h1>
+<form method="post" action="/admin/settings" class="card max-w-2xl space-y-4" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <%- include('../../partials/field', { name: 'whishPaymentUrl', label: t('admin.whishUrl'), type: 'url', value: settings.whishPaymentUrl, hint: t('admin.whishUrlHint'), attrs: 'dir="ltr" placeholder="https://"' }) %>
+  <%- include('../../partials/field', { name: 'paymentInstructions', label: t('admin.paymentInstructions'), type: 'textarea', value: settings.paymentInstructions }) %>
+  <%- include('../../partials/field', { name: 'defaultHoldMinutes', label: t('admin.defaultHoldMinutes'), type: 'number', required: true, value: settings.defaultHoldMinutes, attrs: 'min="5" max="1440" dir="ltr"' }) %>
+  <button type="submit" class="btn btn-primary"><%= t('common.saveChanges') %></button>
+</form>

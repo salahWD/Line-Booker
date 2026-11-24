@@ -1,0 +1,16 @@
+<div class="mx-auto max-w-md">
+  <div class="card space-y-5 text-center">
+    <p class="text-sm font-semibold text-brand-700"><%= branch.name %></p>
+    <h1 class="page-title"><%= line.name %></h1>
+    <p class="text-slate-600"><%= t('ticket.leaveNote') %></p>
+    <% if (currentUser && currentUser.role === 'customer') { %>
+      <form method="post" action="/join/<%= line.displayToken %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit" class="btn btn-primary btn-lg w-full" <%= line.isOpen ? '' : 'disabled' %>>🎟️ <%= t('branch.takeNumber') %></button>
+      </form>
+      <% if (!line.isOpen) { %><p class="alert alert-warning"><%= t('ticket.lineClosed') %></p><% } %>
+    <% } else { %>
+      <a class="btn btn-primary btn-lg w-full" href="/login?next=<%= encodeURIComponent(`/join/${line.displayToken}`) %>"><%= t('nav.login') %></a>
+    <% } %>
+  </div>
+</div>

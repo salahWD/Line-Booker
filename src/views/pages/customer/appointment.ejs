@@ -1,0 +1,127 @@
+<%
+  const tz = view.timezone;
+  const latestSubmission = view.submissions[0]?.submission;
+%>
+<a class="text-sm text-brand-700 hover:underline" href="/me">‹ <%= t('appointment.myAppointments') %></a>
+<div class="mb-6 mt-2 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <h1 class="page-title"><%= view.branchName %></h1>
+    <p class="muted"><%= view.businessName %> · <%= view.lineName %></p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <%- include('../../partials/badge', { kind: 'appointment', value: a.status }) %>
+    <% if (a.paymentStatus !== 'not_required') { %><%- include('../../partials/badge', { kind: 'payment', value: a.paymentStatus }) %><% } %>
+  </div>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-3">
+  <div class="space-y-6 lg:col-span-2">
+    <section class="card">
+      <dl class="grid gap-4 sm:grid-cols-3">
+        <div><dt class="muted"><%= t('appointment.when') %></dt><dd class="font-bold"><%= fmt.date(a.localDate, tz) %></dd></div>
+        <div><dt class="muted"><%= t('common.time') %></dt><dd class="num text-xl font-bold"><%= fmt.hhmm(a.localTime) %></dd></div>
+        <div><dt class="muted"><%= t('common.reference') %></dt><dd class="num font-bold tracking-wider"><%= a.reference %></dd></div>
+      </dl>
+    </section>
+
+    <%# ── Payment state messages ─────────────────────────── %>
+    <% if (a.status === 'held' && a.paymentStatus === 'unpaid' && a.holdExpiresAt) { %>
+      <div class="alert alert-warning" x-data="countdown" data-until="<%= new Date(a.holdExpiresAt).toISOString() %>">
+        <span aria-hidden="true">⏳</span>
+        <p class="flex-1"><%= t('appointment.holdExpiresIn') %> <strong class="num" x-text="clock"></strong></p>
+      </div>
+    <% } %>
+    <% if (a.paymentStatus === 'awaiting_verification') { %>
+      <p class="alert alert-info"><span aria-hidden="true">🔎</span><span><%= t('payment.awaitingNote') %></span></p>
+    <% } %>
+    <% if (a.paymentStatus === 'confirmed') { %>
+      <p class="alert alert-success"><span aria-hidden="true">✅</span><span><%= t('payment.confirmedNote') %></span></p>
+    <% } %>
+    <% if (a.paymentStatus === 'rejected') { %>
+      <p class="alert alert-error"><span aria-hidden="true">⚠️</span><span><%= t('payment.rejectedNote', { reason: latestSubmission?.reviewNote || '' }) %></span></p>
+    <% } %>
+    <% if (a.status === 'expired') { %>
+      <p class="alert alert-error"><span aria-hidden="true">⌛</span><span><%= t('appointment.holdExpired') %></span></p>
+    <% } %>
+
+    <% if (panel && a.paymentStatus === 'unpaid') { %>
+      <%- include('../../partials/pay-panel', { panel }) %>
+    <% } %>
+
+    <%# ── Check-in / ticket ───────────────────────────────── %>
+    <% if (view.ticket) { %>
+      <a href="/t/<%= view.ticket.trackingToken %>" class="card flex items-center justify-between border-brand-300 bg-brand-50">
+        <span><span class="muted block"><%= t('ticket.yourNumber') %></span><span class="num text-3xl font-bold text-brand-700"><%= view.ticket.displayCode %></span></span>
+        <%- include('../../partials/badge', { kind: 'ticket', value: view.ticket.status }) %>
+      </a>
+    <% } else if (canCheckIn) { %>
+      <form method="post" action="/me/appointments/<%= a.reference %>/check-in" class="card flex flex-wrap items-center justify-between gap-3">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <p class="muted"><%= t('appointment.checkInNotYet', { minutes: view.lineCheckinOpenMinutes }) %></p>
+        <button type="submit" class="btn btn-primary">📍 <%= t('appointment.checkIn') %></button>
+      </form>
+    <% } %>
+
+    <%# ── Review ───────────────────────────────────────────── %>
+    <% if (view.review) { %>
+      <section class="card">
+        <h2 class="section-title mb-2"><%= t('reviews.title') %></h2>
+        <p class="text-amber-500"><%= '★'.repeat(view.review.rating) %><span class="text-slate-300"><%= '★'.repeat(5 - view.review.rating) %></span></p>
+        <% if (view.review.comment) { %><p class="mt-1"><%= view.review.comment %></p><% } %>
+        <% if (view.review.ownerReply) { %><p class="mt-2 rounded-lg bg-brand-50 p-2 text-sm"><strong><%= t('branch.ownerReply') %>:</strong> <%= view.review.ownerReply %></p><% } %>
+      </section>
+    <% } else if (canReview) { %>
+      <form method="post" action="/me/appointments/<%= a.reference %>/review" class="card space-y-3">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <h2 class="section-title"><%= t('reviews.title') %></h2>
+        <fieldset>
+          <legend class="label"><%= t('reviews.rating') %></legend>
+          <div class="flex flex-row-reverse justify-end gap-1">
+            <% [5, 4, 3, 2, 1].forEach((n) => { %>
+              <label class="cursor-pointer">
+                <input type="radio" name="rating" value="<%= n %>" class="peer sr-only" required>
+                <span class="flex size-11 items-center justify-center rounded-lg border border-slate-300 text-lg peer-checked:border-amber-400 peer-checked:bg-amber-100" aria-label="<%= t('reviews.stars', { n }) %>"><%= n %>★</span>
+              </label>
+            <% }) %>
+          </div>
+        </fieldset>
+        <%- include('../../partials/field', { name: 'comment', label: t('reviews.comment'), type: 'textarea', attrs: 'maxlength="1000"' }) %>
+        <button class="btn btn-primary" type="submit"><%= t('reviews.submit') %></button>
+      </form>
+    <% } %>
+
+    <%- include('../../partials/notes', { notes: view.notes, action: `/me/appointments/${a.reference}/notes`, staff: false, tz }) %>
+  </div>
+
+  <aside class="space-y-6">
+    <% if (canReschedule || canCancel) { %>
+      <section class="card space-y-3">
+        <% if (canReschedule) { %>
+          <a href="/me/appointments/<%= a.reference %>/reschedule" class="btn btn-secondary w-full"><%= t('appointment.reschedule') %></a>
+        <% } %>
+        <% if (canCancel) { %>
+          <form method="post" action="/me/appointments/<%= a.reference %>/cancel" data-confirm="<%= t('appointment.cancelConfirm') %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="btn btn-danger w-full"><%= t('appointment.cancel') %></button>
+          </form>
+          <% if (a.paymentStatus === 'confirmed' || a.paymentStatus === 'awaiting_verification') { %><p class="hint"><%= t('appointment.cancelPaidNote') %></p><% } %>
+        <% } %>
+        <p class="hint"><%= t('appointment.cancelTooLate', { hours: view.cancellationCutoffHours }) %></p>
+        <% if (view.cancellationPolicyText) { %><p class="text-sm text-slate-600"><strong><%= t('branch.cancellationPolicy') %>:</strong> <%= view.cancellationPolicyText %></p><% } %>
+      </section>
+    <% } %>
+
+    <section class="card">
+      <h2 class="section-title mb-3"><%= t('appointment.history') %></h2>
+      <ol class="relative space-y-3 border-s border-slate-200 ps-4">
+        <% view.events.forEach(({ event }) => { %>
+          <li>
+            <span class="absolute -start-1.5 mt-1.5 size-3 rounded-full bg-brand-400" aria-hidden="true"></span>
+            <p class="font-semibold"><%= t(`appointment.events.${event.type}`) %></p>
+            <p class="muted num"><%= fmt.dateTime(event.createdAt, tz) %></p>
+          </li>
+        <% }) %>
+      </ol>
+    </section>
+  </aside>
+</div>

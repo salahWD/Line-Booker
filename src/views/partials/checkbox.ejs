@@ -1,0 +1,11 @@
+<%# include('checkbox', { name, label, checked, hint? }) %>
+<%
+  const isChecked = Object.keys(old).length ? old[name] === 'on' : Boolean(checked);
+%>
+<label class="flex items-start gap-3 py-1">
+  <input type="checkbox" name="<%= name %>" class="checkbox mt-1" <%= isChecked ? 'checked' : '' %>>
+  <span>
+    <span class="font-semibold text-slate-700"><%= label %></span>
+    <% if (typeof hint !== 'undefined' && hint) { %><span class="block text-xs text-slate-500"><%= hint %></span><% } %>
+  </span>
+</label>

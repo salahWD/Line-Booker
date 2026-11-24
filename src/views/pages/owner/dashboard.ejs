@@ -1,0 +1,36 @@
+<%
+  const sum = (key) => today.reduce((s, r) => s + (r[key] || 0), 0);
+%>
+<h1 class="page-title mb-6"><%= t('owner.overview') %></h1>
+
+<div class="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+  <div class="stat"><span class="stat-label"><%= t('owner.waitingNow') %></span><span class="stat-value num"><%= sum('waiting_now') %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('owner.todayTickets') %></span><span class="stat-value num"><%= sum('tickets_today') %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('owner.todayAppointments') %></span><span class="stat-value num"><%= sum('appointments_today') %></span></div>
+  <div class="stat"><span class="stat-label"><%= t('owner.awaitingPayments') %></span><span class="stat-value num"><%= sum('awaiting_payments') %></span></div>
+</div>
+
+<% if (!today.length) { %>
+  <%- include('../../partials/empty', { message: t('home.empty'), icon: '🏢', action: { href: '/owner/branches/new', label: t('owner.newBranch') } }) %>
+<% } else { %>
+  <section class="card table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th><%= t('common.branch') %></th><th><%= t('owner.waitingNow') %></th><th><%= t('owner.todayTickets') %></th><th><%= t('owner.todayAppointments') %></th><th><%= t('owner.awaitingPayments') %></th><th><%= t('owner.avgRating') %></th></tr>
+      </thead>
+      <tbody>
+        <% today.forEach((r) => { %>
+          <tr>
+            <td><a class="font-semibold text-brand-700 hover:underline" href="/owner/branches/<%= r.branch_id %>"><%= r.branch_name %></a></td>
+            <td class="num"><%= r.waiting_now %></td>
+            <td class="num"><%= r.tickets_today %></td>
+            <td class="num"><%= r.appointments_today %></td>
+            <td class="num"><%= r.awaiting_payments %></td>
+            <td class="num"><%= ratings[r.branch_id] ? `⭐ ${ratings[r.branch_id].avg} (${ratings[r.branch_id].count})` : '—' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+  <p class="hint mt-3">🔒 <%= t('owner.paymentReadonly') %></p>
+<% } %>

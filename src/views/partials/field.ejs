@@ -1,0 +1,30 @@
+<%#
+  Reusable form field.
+  include('field', { name, label, type?, value?, hint?, required?, options?: [[value, label]], attrs? })
+  `old` (input after a failed submit) wins over `value`; `errors[name]` shows the message.
+%>
+<%
+  const fieldType = typeof type !== 'undefined' ? type : 'text';
+  const fieldId = `f-${name}`;
+  const current = old[name] !== undefined ? old[name] : (typeof value !== 'undefined' && value !== null ? value : '');
+  const error = errors[name];
+  const extra = typeof attrs !== 'undefined' ? attrs : '';
+  const cls = typeof inputClass !== 'undefined' ? inputClass : '';
+  const isRequired = typeof required !== 'undefined' && required;
+%>
+<div>
+  <label class="label" for="<%= fieldId %>"><%= label %><% if (!isRequired) { %> <span class="font-normal text-slate-400">(<%= t('common.optional') %>)</span><% } %></label>
+  <% if (fieldType === 'textarea') { %>
+    <textarea id="<%= fieldId %>" name="<%= name %>" rows="3" class="input" <%= isRequired ? 'required' : '' %> aria-invalid="<%= Boolean(error) %>" <%- error ? `aria-describedby="${fieldId}-err"` : '' %> <%- extra %>><%= current %></textarea>
+  <% } else if (fieldType === 'select') { %>
+    <select id="<%= fieldId %>" name="<%= name %>" class="input" <%= isRequired ? 'required' : '' %> aria-invalid="<%= Boolean(error) %>" <%- extra %>>
+      <% options.forEach(([optValue, optLabel]) => { %>
+        <option value="<%= optValue %>" <%= String(current) === String(optValue) ? 'selected' : '' %>><%= optLabel %></option>
+      <% }) %>
+    </select>
+  <% } else { %>
+    <input id="<%= fieldId %>" name="<%= name %>" type="<%= fieldType %>" value="<%= current %>" class="input <%= cls %>"<%= isRequired ? 'required' : '' %> aria-invalid="<%= Boolean(error) %>" <%- error ? `aria-describedby="${fieldId}-err"` : '' %> <%- extra %>>
+  <% } %>
+  <% if (typeof hint !== 'undefined' && hint) { %><p class="hint"><%= hint %></p><% } %>
+  <% if (error) { %><p class="field-error" id="<%= fieldId %>-err"><%= error %></p><% } %>
+</div>

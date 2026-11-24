@@ -1,0 +1,108 @@
+<%#
+  Live ticket tracker. The server renders the first state; the "ticketTracker" component then
+  keeps it fresh via SSE + fetch, rings an alarm when the ticket is called, and manages alerts.
+%>
+<%
+  const tk = view.ticket;
+  const est = view.estimate;
+  const statusLabels = { waiting: t('ticket.statusLabels.waiting'), called: t('ticket.statusLabels.called'), completed: t('ticket.statusLabels.completed'), skipped: t('ticket.statusLabels.skipped'), cancelled: t('ticket.statusLabels.cancelled'), expired: t('ticket.statusLabels.expired') };
+  const methodLabels = { live: t('ticket.methodLive'), history: t('ticket.methodHistory'), configured: t('ticket.methodConfigured') };
+  const endMessages = { completed: t('ticket.completed'), skipped: t('ticket.skipped'), cancelled: t('ticket.cancelled'), expired: t('ticket.expired') };
+%>
+<div class="mx-auto max-w-xl"
+  x-data="ticketTracker"
+  data-state-url="/t/<%= token %>/state"
+  data-events-url="/t/<%= token %>/events"
+  data-alert-url="/t/<%= token %>/alert"
+  data-initial="<%= JSON.stringify(view) %>"
+  data-status-labels="<%= JSON.stringify(statusLabels) %>"
+  data-method-labels="<%= JSON.stringify(methodLabels) %>"
+  data-end-messages="<%= JSON.stringify(endMessages) %>"
+  data-can-push="<%= canEnablePush ? '1' : '' %>"
+  data-push-config="<%= pushConfig ? JSON.stringify(pushConfig) : '' %>"
+  data-vapid-key="<%= vapidKey %>"
+  data-firebase-sdk="<%= firebaseSdk %>">
+
+  <%- include('../../partials/connection-banner') %>
+
+  <%# Full-screen "your turn" alert with looping alarm until acknowledged. %>
+  <div x-cloak x-show="showCalledOverlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-amber-400 p-6 text-center text-ink" role="alertdialog" aria-modal="true" aria-labelledby="called-title">
+    <p id="called-title" class="text-4xl font-bold"><%= t('ticket.calledTitle') %></p>
+    <p class="num text-8xl font-black" x-text="state.ticket.code"></p>
+    <p class="text-2xl font-semibold" x-text="counterText"></p>
+    <button type="button" class="btn btn-lg bg-ink text-white" @click="acknowledge"><%= t('ticket.stopAlarm') %></button>
+  </div>
+
+  <section class="card mb-4 text-center" data-animate="ticket">
+    <p class="muted"><%= view.branch.name %> · <%= view.line.name %></p>
+    <p class="mt-2 text-sm font-semibold text-slate-500"><%= t('ticket.yourNumber') %></p>
+    <p class="num text-7xl font-black tracking-tight text-brand-700" x-text="state.ticket.code"><%= tk.code %></p>
+    <p class="mt-2">
+      <span class="badge" x-bind:class="statusClass" x-text="statusLabel"><%= statusLabels[tk.status] %></span>
+    </p>
+  </section>
+
+  <div x-cloak x-show="state.line.paused" class="alert alert-warning mb-4"><span aria-hidden="true">⏸️</span><p><%= t('ticket.pausedBanner') %></p></div>
+  <div x-cloak x-show="!state.line.isOpen && isWaiting" class="alert alert-error mb-4"><span aria-hidden="true">⛔</span><p><%= t('ticket.closedBanner') %></p></div>
+
+  <%# Waiting: people ahead, estimated range, expected call time. %>
+  <section class="card mb-4" x-show="isWaiting" <%= tk.status === 'waiting' ? '' : 'x-cloak' %> aria-live="polite">
+    <dl class="grid grid-cols-2 gap-3 text-center">
+      <div class="rounded-xl bg-slate-50 p-3">
+        <dt class="text-sm text-slate-500"><%= t('ticket.ahead') %></dt>
+        <dd class="text-xl font-bold" x-text="aheadText"><%= view.ahead ?? '—' %></dd>
+      </div>
+      <div class="rounded-xl bg-slate-50 p-3">
+        <dt class="text-sm text-slate-500"><%= t('ticket.estimatedWait') %></dt>
+        <dd class="num text-xl font-bold" x-text="rangeText"><%= est ? `${est.lowMin}–${est.highMin}` : '—' %></dd>
+      </div>
+    </dl>
+    <p class="mt-3 text-center text-lg font-semibold text-brand-800" x-text="expectedText"><%= est ? t('ticket.expectedAt', { from: est.expectedFrom, to: est.expectedTo }) : '' %></p>
+    <div class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-slate-500">
+      <span x-text="paceText"><%= est ? t('ticket.paceValue', { minutes: est.paceMinutes }) : '' %></span>
+      <span x-text="methodText"><%= est ? methodLabels[est.method] : '' %></span>
+      <span><%= t('common.updatedAt') %> <span class="num" x-text="updatedText"></span></span>
+    </div>
+    <p class="mt-3 text-center text-sm text-slate-600">🚶 <%= t('ticket.leaveNote') %></p>
+  </section>
+
+  <%# Called: where to go. %>
+  <section class="card mb-4 border-amber-300 bg-amber-50 text-center" x-show="isCalled" <%= tk.status === 'called' ? '' : 'x-cloak' %>>
+    <p class="text-2xl font-bold"><%= t('ticket.calledTitle') %></p>
+    <p class="mt-1 text-lg" x-text="counterText"></p>
+  </section>
+
+  <%# Finished states. %>
+  <p class="alert alert-info mb-4" x-show="endMessage" x-text="endMessage" <%= endMessages[tk.status] ? '' : 'x-cloak' %>><%= endMessages[tk.status] || '' %></p>
+
+  <%# Alerts: lead time + push. %>
+  <section class="card mb-4 space-y-4" x-show="isActive" <%= ['waiting', 'called'].includes(tk.status) ? '' : 'x-cloak' %>>
+    <div>
+      <label for="alert-lead" class="label">🔔 <%= t('ticket.alertTitle') %></label>
+      <select id="alert-lead" class="input" x-model.number="alertLead" @change="saveAlert">
+        <% alertChoices.forEach((m) => { %>
+          <option value="<%= m %>" <%= m === tk.alertLeadMinutes ? 'selected' : '' %>><%= m %> <%= t('common.minutes') %></option>
+        <% }) %>
+      </select>
+      <p class="hint" x-show="alertMessage" x-text="alertMessage"></p>
+    </div>
+    <% if (canEnablePush) { %>
+      <div class="space-y-2">
+        <button type="button" class="btn btn-secondary w-full" @click="enablePush" x-show="!pushEnabled" x-bind:disabled="pushBusy">📲 <%= t('ticket.enablePush') %></button>
+        <p class="hint" x-text="pushMessage"></p>
+        <p class="hint"><%= t('ticket.pushSmsFallback') %></p>
+        <p class="hint" x-show="isIos"><%= t('ticket.iosHint') %></p>
+      </div>
+    <% } %>
+  </section>
+
+  <details class="card mb-4 text-sm text-slate-600">
+    <summary class="cursor-pointer font-semibold"><%= t('branch.queuePolicy') %></summary>
+    <p class="mt-2"><%= view.line.policy %></p>
+  </details>
+
+  <form method="post" action="/t/<%= token %>/cancel" x-show="isActive" <%= ['waiting', 'called'].includes(tk.status) ? '' : 'x-cloak' %> data-confirm="<%= t('ticket.cancelConfirm') %>">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button type="submit" class="btn btn-ghost w-full text-rose-700"><%= t('ticket.cancelTicket') %></button>
+  </form>
+</div>

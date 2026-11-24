@@ -1,0 +1,24 @@
+<h1 class="page-title mb-6"><%= t('operator.chooseLine') %></h1>
+<% if (!branches.length || !branches.some((b) => b.lines.length)) { %>
+  <%- include('../../partials/empty', { message: t('operator.noLines'), icon: '🧭' }) %>
+<% } %>
+<div class="space-y-6">
+  <% branches.filter((b) => b.lines.length).forEach((b) => { %>
+    <section aria-labelledby="b-<%= b.id %>">
+      <h2 id="b-<%= b.id %>" class="section-title mb-3"><%= b.name %></h2>
+      <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <% b.lines.forEach((l) => { %>
+          <li>
+            <a class="card flex items-center justify-between gap-3 hover:border-brand-300" href="/operator/lines/<%= l.id %>">
+              <span class="font-bold"><%= l.name %></span>
+              <span class="flex gap-1">
+                <% if (!l.isOpen) { %><span class="badge badge-red"><%= t('branch.closed') %></span><% } %>
+                <% if (l.isPaused) { %><span class="badge badge-amber"><%= t('branch.paused') %></span><% } %>
+              </span>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+  <% }) %>
+</div>

@@ -1,0 +1,72 @@
+<%#
+  Public waiting-room screen. Receives only ticket codes, counter labels and counts —
+  never names, phone numbers, notes or payment details.
+%>
+<div class="flex h-dvh flex-col gap-6 p-4 sm:p-8"
+  x-data="displayBoard"
+  data-state-url="/display/<%= token %>/state<%= lineFilter ? `?line=${lineFilter}` : '' %>"
+  data-events-url="/display/<%= token %>/events">
+
+  <header class="flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <img src="/images/icon.svg" alt="" class="size-10" width="40" height="40">
+      <div>
+        <p class="text-sm text-slate-400"><%= appName %></p>
+        <h1 class="text-2xl font-bold sm:text-3xl"><%= branch.name %></h1>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <button type="button" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800" @click="toggleSound" x-text="soundLabel" data-label-on="🔔 <%= t('display.soundOn') %>" data-label-off="🔕 <%= t('display.enableSound') %>"></button>
+      <p class="num text-4xl font-bold tabular-nums" x-text="clock"></p>
+    </div>
+  </header>
+
+  <div x-cloak x-show="disconnected" class="rounded-xl bg-amber-500/20 px-4 py-2 text-amber-200" role="status">📡 <%= t('common.disconnected') %></div>
+
+  <%# Big flash when a number is called. %>
+  <div x-cloak x-show="flash.code" class="fixed inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-brand-700/95" data-flash-overlay>
+    <p class="text-3xl font-semibold text-brand-100" x-text="flash.line"></p>
+    <p class="num text-[9rem] font-black leading-none sm:text-[14rem]" x-text="flash.code"></p>
+    <p class="text-4xl font-bold text-amber-300" x-text="flash.counter"></p>
+  </div>
+
+  <main class="grid flex-1 gap-6 overflow-hidden lg:grid-cols-3">
+    <section class="space-y-4 lg:col-span-2" aria-labelledby="serving-title">
+      <h2 id="serving-title" class="text-xl font-semibold text-slate-300"><%= t('display.nowServing') %></h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <template x-for="line in state.lines" x-bind:key="line.id">
+          <article class="rounded-3xl bg-slate-900 p-5 ring-1 ring-slate-800">
+            <div class="mb-3 flex items-center justify-between gap-2">
+              <h3 class="text-xl font-bold" x-text="line.name"></h3>
+              <span class="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300"><span class="num" x-text="line.waiting"></span> <%= t('display.waiting') %></span>
+            </div>
+            <p x-show="line.paused" class="mb-2 text-amber-300">⏸️ <%= t('display.paused') %></p>
+            <p x-show="!line.isOpen" class="mb-2 text-rose-300">⛔ <%= t('display.closed') %></p>
+            <template x-for="call in line.nowServing" x-bind:key="call.id">
+              <div class="flex items-baseline justify-between gap-3 border-t border-slate-800 py-2">
+                <span class="num text-5xl font-black text-white sm:text-6xl" x-text="call.code"></span>
+                <span class="text-xl font-semibold text-amber-300" x-text="call.counter"></span>
+              </div>
+            </template>
+            <p x-show="line.nowServing.length === 0" class="num text-5xl font-black text-slate-700"><%= t('display.nobody') %></p>
+          </article>
+        </template>
+      </div>
+    </section>
+
+    <section class="rounded-3xl bg-slate-900 p-5 ring-1 ring-slate-800" aria-labelledby="recent-title">
+      <h2 id="recent-title" class="mb-3 text-xl font-semibold text-slate-300"><%= t('display.recentCalls') %></h2>
+      <ol class="space-y-2">
+        <template x-for="call in state.recentCalls" x-bind:key="call.id + '-' + call.recalls">
+          <li class="flex items-center justify-between gap-3 rounded-xl bg-slate-800/60 px-4 py-3">
+            <span class="num text-3xl font-bold" x-text="call.code"></span>
+            <span class="text-end">
+              <span class="block text-amber-300" x-text="call.counter"></span>
+              <span class="block text-xs text-slate-400" x-text="call.line"></span>
+            </span>
+          </li>
+        </template>
+      </ol>
+    </section>
+  </main>
+</div>

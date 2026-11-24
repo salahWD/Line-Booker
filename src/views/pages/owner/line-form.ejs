@@ -1,0 +1,54 @@
+<%
+  const l = line || {};
+  const action = line ? `/owner/lines/${line.id}` : `/owner/branches/${branch.id}/lines`;
+%>
+<a class="text-sm text-brand-700 hover:underline" href="/owner/branches/<%= branch.id %>#lines">‹ <%= branch.name %></a>
+<h1 class="page-title mb-6 mt-2"><%= line ? `${t('owner.editLine')} — ${line.name}` : t('owner.newLine') %></h1>
+
+<form method="post" action="<%= action %>" class="max-w-3xl space-y-6" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <section class="card space-y-4">
+    <div class="grid gap-4 sm:grid-cols-3">
+      <div class="sm:col-span-2"><%- include('../../partials/field', { name: 'name', label: t('owner.lineName'), required: true, value: l.name, hint: t('owner.lineNameHint') }) %></div>
+      <%- include('../../partials/field', { name: 'codePrefix', label: t('owner.codePrefix'), required: true, value: l.codePrefix || 'A', hint: t('owner.codePrefixHint'), attrs: 'dir="ltr" maxlength="3"' }) %>
+    </div>
+    <%- include('../../partials/field', { name: 'description', label: t('common.details'), value: l.description }) %>
+    <div class="grid gap-4 sm:grid-cols-3">
+      <%- include('../../partials/field', { name: 'avgMinutesPerCustomer', label: t('owner.avgMinutes'), type: 'number', required: true, value: l.avgMinutesPerCustomer ?? 10, hint: t('owner.avgMinutesHint'), attrs: 'min="1" max="240" dir="ltr"' }) %>
+      <%- include('../../partials/field', { name: 'countersCount', label: t('owner.countersCount'), type: 'number', required: true, value: l.countersCount ?? 1, attrs: 'min="1" max="50" dir="ltr"' }) %>
+      <%- include('../../partials/field', { name: 'sortOrder', label: t('owner.sortOrder'), type: 'number', required: true, value: l.sortOrder ?? 0, attrs: 'min="0" max="100" dir="ltr"' }) %>
+    </div>
+  </section>
+
+  <section class="card space-y-4">
+    <h2 class="section-title"><%= t('owner.queuePolicy') %></h2>
+    <fieldset class="space-y-2">
+      <legend class="sr-only"><%= t('owner.queuePolicy') %></legend>
+      <% policies.forEach((p) => { const current = old.queuePolicy ?? l.queuePolicy ?? 'interleave'; %>
+        <label class="flex items-start gap-3 rounded-xl border border-slate-200 p-3 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+          <input type="radio" name="queuePolicy" value="<%= p %>" class="mt-1 accent-brand-600" <%= current === p ? 'checked' : '' %>>
+          <span><span class="font-semibold"><%= t(`policy.names.${p}`) %></span><span class="block text-sm text-slate-600"><%= t(`policy.${p}`, { ratio: l.interleaveRatio ?? 2 }) %></span></span>
+        </label>
+      <% }) %>
+    </fieldset>
+    <div class="grid gap-4 sm:grid-cols-3">
+      <%- include('../../partials/field', { name: 'interleaveRatio', label: t('owner.interleaveRatio'), type: 'number', required: true, value: l.interleaveRatio ?? 2, attrs: 'min="1" max="10" dir="ltr"' }) %>
+      <%- include('../../partials/field', { name: 'lateGraceMinutes', label: t('owner.lateGraceMinutes'), type: 'number', required: true, value: l.lateGraceMinutes ?? 10, attrs: 'min="0" dir="ltr"' }) %>
+      <%- include('../../partials/field', { name: 'checkinOpenMinutes', label: t('owner.checkinOpenMinutes'), type: 'number', required: true, value: l.checkinOpenMinutes ?? 60, attrs: 'min="0" dir="ltr"' }) %>
+    </div>
+  </section>
+
+  <section class="card space-y-4">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <%- include('../../partials/field', { name: 'defaultAlertLeadMinutes', label: t('owner.defaultAlertLead'), type: 'number', required: true, value: l.defaultAlertLeadMinutes ?? 15, attrs: 'min="5" max="120" dir="ltr"' }) %>
+      <%- include('../../partials/field', { name: 'alertAheadThreshold', label: t('owner.alertAhead'), type: 'number', required: true, value: l.alertAheadThreshold ?? 2, attrs: 'min="0" max="20" dir="ltr"' }) %>
+    </div>
+    <%- include('../../partials/checkbox', { name: 'allowRemoteJoin', label: t('owner.allowRemoteJoin'), checked: line ? l.allowRemoteJoin : true }) %>
+    <%- include('../../partials/checkbox', { name: 'isActive', label: t('common.active'), checked: line ? l.isActive : true }) %>
+  </section>
+
+  <div class="flex gap-2">
+    <button type="submit" class="btn btn-primary"><%= line ? t('common.saveChanges') : t('common.create') %></button>
+    <% if (line) { %><a class="btn btn-secondary" href="/owner/lines/<%= line.id %>/slots"><%= t('owner.manageSlots') %></a><% } %>
+  </div>
+</form>

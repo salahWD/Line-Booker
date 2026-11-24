@@ -1,0 +1,169 @@
+<%#
+  Operator console for one line. All data comes from /operator/lines/:id/state (JSON) and is
+  refreshed on every realtime event; actions are POSTed with fetch (component "operatorConsole").
+%>
+<%
+  const labels = {
+    walk_in: t('ticket.sourceLabels.walk_in'),
+    appointment: t('ticket.sourceLabels.appointment'),
+    statuses: { held: t('appointment.statusLabels.held'), confirmed: t('appointment.statusLabels.confirmed'), checked_in: t('appointment.statusLabels.checked_in'), completed: t('appointment.statusLabels.completed'), no_show: t('appointment.statusLabels.no_show'), cancelled: t('appointment.statusLabels.cancelled'), expired: t('appointment.statusLabels.expired') },
+    confirmCancel: t('operator.confirmCancel'),
+  };
+%>
+<div x-data="operatorConsole"
+  data-line-id="<%= line.id %>"
+  data-state-url="/operator/lines/<%= line.id %>/state"
+  data-events-url="/operator/lines/<%= line.id %>/events"
+  data-labels="<%= JSON.stringify(labels) %>">
+
+  <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <p class="text-sm font-semibold text-brand-700"><%= branch.name %></p>
+      <h1 class="page-title"><%= line.name %></h1>
+      <p class="muted" x-show="loaded"><span x-text="state.line.policy"></span></p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" class="btn btn-secondary btn-sm" x-show="loaded && !state.line.paused" @click="lineAction('pause')">⏸️ <%= t('operator.pause') %></button>
+      <button type="button" class="btn btn-warning btn-sm" x-cloak x-show="loaded && state.line.paused" @click="lineAction('resume')">▶️ <%= t('operator.resume') %></button>
+      <button type="button" class="btn btn-secondary btn-sm" x-show="loaded && state.line.isOpen" @click="lineAction('close')">⛔ <%= t('operator.closeLine') %></button>
+      <button type="button" class="btn btn-primary btn-sm" x-cloak x-show="loaded && !state.line.isOpen" @click="lineAction('open')">✅ <%= t('operator.openLine') %></button>
+      <a class="btn btn-ghost btn-sm" href="/display/<%= branch.displayToken %>?line=<%= line.id %>" target="_blank" rel="noopener">🖥️ <%= t('operator.openDisplay') %></a>
+    </div>
+  </div>
+
+  <%- include('../../partials/connection-banner') %>
+  <div x-cloak x-show="loaded && state.line.paused" class="alert alert-warning mb-4">⏸️ <%= t('operator.pausedNote') %></div>
+  <div x-cloak x-show="message" class="alert mb-4" x-bind:class="messageError ? 'alert-error' : 'alert-success'" role="status" aria-live="polite"><p x-text="message"></p></div>
+
+  <%# Loading skeleton until the first state arrives. %>
+  <div x-show="!loaded" class="grid gap-4 md:grid-cols-3" aria-busy="true">
+    <div class="skeleton h-40"></div><div class="skeleton h-40"></div><div class="skeleton h-40"></div>
+  </div>
+  <p x-cloak x-show="loadError" class="alert alert-error mb-4"><span x-text="loadError"></span> <button type="button" class="btn btn-sm btn-secondary" @click="refresh"><%= t('common.retry') %></button></p>
+
+  <div x-cloak x-show="loaded" class="grid gap-6 lg:grid-cols-3">
+    <div class="space-y-6 lg:col-span-2">
+      <%# Call next %>
+      <section class="card flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div class="flex-1">
+          <label for="counter" class="label"><%= t('operator.counterLabel') %></label>
+          <input id="counter" class="input" x-model="counterLabel" @change="saveCounter" maxlength="40" placeholder="<%= t('operator.counterPlaceholder') %>">
+        </div>
+        <button type="button" class="btn btn-primary btn-lg sm:w-64" @click="callNext" x-bind:disabled="busy || state.waiting.length === 0">📣 <%= t('operator.callNext') %></button>
+      </section>
+
+      <%# Now serving %>
+      <section class="card" aria-labelledby="serving">
+        <h2 id="serving" class="section-title mb-3"><%= t('operator.nowServing') %></h2>
+        <p class="muted" x-show="state.called.length === 0"><%= t('operator.nobodyCalled') %></p>
+        <ul class="space-y-3">
+          <template x-for="tk in state.called" x-bind:key="tk.id">
+            <li class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div>
+                <span class="num text-3xl font-black" x-text="tk.code"></span>
+                <span class="ms-2 font-semibold" x-text="tk.name"></span>
+                <span class="ms-2 text-sm text-slate-600" x-text="tk.counterLabel"></span>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary btn-sm" @click="act('complete', tk.id)">✅ <%= t('operator.complete') %></button>
+                <button type="button" class="btn btn-secondary btn-sm" @click="act('recall', tk.id)">🔁 <%= t('operator.recall') %></button>
+                <button type="button" class="btn btn-secondary btn-sm" @click="act('skip', tk.id)">⏭️ <%= t('operator.skip') %></button>
+              </div>
+            </li>
+          </template>
+        </ul>
+      </section>
+
+      <%# Waiting list in calling order %>
+      <section class="card" aria-labelledby="waiting">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 id="waiting" class="section-title"><%= t('operator.waitingList') %></h2>
+          <span class="badge badge-blue"><span class="num" x-text="state.waiting.length"></span></span>
+        </div>
+        <p class="muted" x-show="state.waiting.length === 0"><%= t('operator.emptyQueue') %></p>
+        <ol class="divide-y divide-slate-100">
+          <template x-for="tk in state.waiting" x-bind:key="tk.id">
+            <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div class="flex items-center gap-3">
+                <span class="num w-6 text-center text-sm text-slate-400" x-text="tk.position + 1"></span>
+                <span class="num text-xl font-bold" x-text="tk.code"></span>
+                <span>
+                  <span class="block font-semibold" x-text="tk.name"></span>
+                  <span class="block text-xs text-slate-500">
+                    <span x-text="sourceLabel(tk)"></span>
+                    <span class="num" x-show="tk.appointmentTime" x-text="tk.appointmentTime"></span>
+                    · <span class="num" x-text="tk.waitedMinutes"></span> <%= t('common.minutesShort') %>
+                  </span>
+                </span>
+              </div>
+              <div class="flex gap-1">
+                <button type="button" class="btn btn-ghost btn-sm" @click="act('call', tk.id)"><%= t('operator.call') %></button>
+                <button type="button" class="btn btn-ghost btn-sm" @click="act('skip', tk.id)"><%= t('operator.skip') %></button>
+                <button type="button" class="btn btn-ghost btn-sm text-rose-700" @click="cancelTicket(tk.id)"><%= t('operator.cancelTicket') %></button>
+              </div>
+            </li>
+          </template>
+        </ol>
+      </section>
+
+      <%# Skipped %>
+      <section class="card" x-show="state.skipped.length > 0" aria-labelledby="skipped">
+        <h2 id="skipped" class="section-title mb-3"><%= t('operator.skippedList') %></h2>
+        <ul class="divide-y divide-slate-100">
+          <template x-for="tk in state.skipped" x-bind:key="tk.id">
+            <li class="flex items-center justify-between gap-2 py-2">
+              <span><span class="num font-bold" x-text="tk.code"></span> <span x-text="tk.name"></span></span>
+              <span class="flex gap-1">
+                <button type="button" class="btn btn-ghost btn-sm" @click="act('restore', tk.id)"><%= t('operator.restore') %></button>
+                <button type="button" class="btn btn-ghost btn-sm text-rose-700" @click="cancelTicket(tk.id)"><%= t('operator.cancelTicket') %></button>
+              </span>
+            </li>
+          </template>
+        </ul>
+      </section>
+    </div>
+
+    <aside class="space-y-6">
+      <section class="card">
+        <h2 class="section-title mb-3"><%= t('operator.stats') %></h2>
+        <dl class="grid grid-cols-3 gap-2 text-center">
+          <div><dt class="text-xs text-slate-500"><%= t('operator.served') %></dt><dd class="num text-2xl font-bold" x-text="state.stats.served"></dd></div>
+          <div><dt class="text-xs text-slate-500"><%= t('branch.waiting') %></dt><dd class="num text-2xl font-bold" x-text="state.stats.waiting"></dd></div>
+          <div><dt class="text-xs text-slate-500"><%= t('operator.avgWait') %></dt><dd class="num text-2xl font-bold" x-text="state.stats.avgWaitMin === null ? '—' : state.stats.avgWaitMin"></dd></div>
+        </dl>
+        <p class="muted mt-3"><%= t('branch.estimate') %>: <span class="num" x-text="state.estimateForNew.lowMin + '–' + state.estimateForNew.highMin"></span> <%= t('common.minutesShort') %></p>
+      </section>
+
+      <form class="card space-y-3" @submit.prevent="addWalkIn">
+        <h2 class="section-title"><%= t('operator.addWalkIn') %></h2>
+        <div>
+          <label class="label" for="guest-name"><%= t('operator.guestName') %></label>
+          <input id="guest-name" class="input" x-model="walkIn.guestName" maxlength="80">
+        </div>
+        <div>
+          <label class="label" for="guest-phone"><%= t('operator.guestPhone') %></label>
+          <input id="guest-phone" class="input" x-model="walkIn.phone" type="tel" dir="ltr" inputmode="tel">
+        </div>
+        <button type="submit" class="btn btn-secondary w-full" x-bind:disabled="busy">➕ <%= t('operator.addWalkIn') %></button>
+      </form>
+
+      <section class="card">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="section-title"><%= t('operator.todayAppointments') %></h2>
+          <a class="text-sm text-brand-700 hover:underline" href="/operator/appointments?lineId=<%= line.id %>"><%= t('common.view') %></a>
+        </div>
+        <p class="muted" x-show="state.appointments.length === 0"><%= t('operator.noAppointments') %></p>
+        <ul class="divide-y divide-slate-100 text-sm">
+          <template x-for="ap in state.appointments" x-bind:key="ap.id">
+            <li class="flex items-center justify-between gap-2 py-2">
+              <a class="hover:underline" x-bind:href="'/operator/appointments/' + ap.id">
+                <span class="num font-bold" x-text="ap.time"></span> <span x-text="ap.name"></span>
+              </a>
+              <span class="badge badge-gray" x-text="appointmentStatus(ap.status)"></span>
+            </li>
+          </template>
+        </ul>
+      </section>
+    </aside>
+  </div>
+</div>

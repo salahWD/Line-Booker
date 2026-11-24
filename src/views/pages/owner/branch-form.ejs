@@ -1,0 +1,125 @@
+<%
+  const b = branch || {};
+  const action = branch ? `/owner/branches/${branch.id}` : '/owner/branches';
+%>
+<a class="text-sm text-brand-700 hover:underline" href="/owner/branches">‹ <%= t('owner.branches') %></a>
+<h1 class="page-title mb-6 mt-2"><%= branch ? `${t('owner.editBranch')} — ${branch.name}` : t('owner.newBranch') %></h1>
+
+<div class="grid gap-6 lg:grid-cols-3">
+  <form method="post" action="<%= action %>" class="space-y-6 lg:col-span-2" novalidate>
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <section class="card space-y-4">
+      <h2 class="section-title"><%= t('owner.general') %></h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <%- include('../../partials/field', { name: 'name', label: t('common.name'), required: true, value: b.name }) %>
+        <%- include('../../partials/field', { name: 'slug', label: t('owner.slug'), required: true, value: b.slug, hint: t('owner.slugHint'), attrs: 'dir="ltr"' }) %>
+        <%- include('../../partials/field', { name: 'city', label: t('common.city'), required: true, value: b.city }) %>
+        <%- include('../../partials/field', { name: 'phone', label: t('common.phone'), type: 'tel', value: b.phone, attrs: 'dir="ltr"' }) %>
+      </div>
+      <%- include('../../partials/field', { name: 'address', label: t('common.address'), value: b.address }) %>
+      <%- include('../../partials/field', { name: 'timezone', label: t('owner.timezone'), required: true, value: b.timezone || 'Asia/Beirut', attrs: 'dir="ltr"' }) %>
+      <%- include('../../partials/checkbox', { name: 'isActive', label: t('common.active'), checked: branch ? b.isActive : true }) %>
+    </section>
+
+    <section class="card space-y-4">
+      <h2 class="section-title"><%= t('owner.feeSection') %></h2>
+      <p class="alert alert-info"><%= t('owner.feeHint') %></p>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <%- include('../../partials/field', { name: 'feeAmount', label: t('owner.feeAmount'), type: 'number', required: true, value: b.feeAmount ?? '0', attrs: 'min="0" step="0.01" dir="ltr"' }) %>
+        <%- include('../../partials/field', { name: 'currency', label: t('common.currency'), type: 'select', required: true, value: b.currency || 'USD', options: currencies.map((c) => [c, c]) }) %>
+        <%- include('../../partials/field', { name: 'feeType', label: t('owner.feeType'), type: 'select', required: true, value: b.feeType || 'deposit', options: feeTypes.map((f) => [f, t(`payment.feeTypes.${f}`)]) }) %>
+      </div>
+      <%- include('../../partials/field', { name: 'holdMinutes', label: t('owner.holdMinutes'), type: 'number', value: b.holdMinutes, hint: t('owner.holdMinutesHint'), attrs: 'min="5" max="1440" dir="ltr"' }) %>
+    </section>
+
+    <section class="card space-y-4">
+      <h2 class="section-title"><%= t('owner.bookingRules') %></h2>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <%- include('../../partials/field', { name: 'minNoticeMinutes', label: t('owner.minNoticeMinutes'), type: 'number', required: true, value: b.minNoticeMinutes ?? 60, attrs: 'min="0" dir="ltr"' }) %>
+        <%- include('../../partials/field', { name: 'bookingWindowDays', label: t('owner.bookingWindowDays'), type: 'number', required: true, value: b.bookingWindowDays ?? 30, attrs: 'min="1" max="60" dir="ltr"' }) %>
+        <%- include('../../partials/field', { name: 'cancellationCutoffHours', label: t('owner.cancellationCutoffHours'), type: 'number', required: true, value: b.cancellationCutoffHours ?? 24, attrs: 'min="0" dir="ltr"' }) %>
+      </div>
+      <%- include('../../partials/checkbox', { name: 'allowReschedule', label: t('owner.allowReschedule'), checked: branch ? b.allowReschedule : true }) %>
+      <%- include('../../partials/field', { name: 'cancellationPolicyText', label: t('owner.cancellationPolicyText'), type: 'textarea', value: b.cancellationPolicyText }) %>
+    </section>
+
+    <button type="submit" class="btn btn-primary"><%= branch ? t('common.saveChanges') : t('common.create') %></button>
+  </form>
+
+  <% if (branch) { %>
+    <aside class="space-y-6">
+      <section class="card space-y-3" id="lines">
+        <div class="flex items-center justify-between">
+          <h2 class="section-title"><%= t('owner.linesTitle') %></h2>
+          <a class="btn btn-ghost btn-sm" href="/owner/branches/<%= branch.id %>/lines/new">➕</a>
+        </div>
+        <% if (!lines.length) { %><p class="muted"><%= t('common.noResults') %></p><% } %>
+        <ul class="divide-y divide-slate-100">
+          <% lines.forEach((l) => { %>
+            <li class="flex items-center justify-between gap-2 py-2">
+              <span class="font-semibold"><%= l.name %> <span class="num text-xs text-slate-500">(<%= l.codePrefix %>)</span></span>
+              <span class="flex gap-1">
+                <a class="btn btn-ghost btn-sm" href="/owner/lines/<%= l.id %>/slots"><%= t('owner.manageSlots') %></a>
+                <a class="btn btn-ghost btn-sm" href="/owner/lines/<%= l.id %>/edit"><%= t('common.edit') %></a>
+              </span>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+
+      <section class="card space-y-3" id="display">
+        <h2 class="section-title"><%= t('owner.displayLink') %></h2>
+        <a class="block break-all rounded-lg bg-slate-50 p-2 text-sm text-brand-700 num" href="/display/<%= branch.displayToken %>" target="_blank" rel="noopener">/display/<%= branch.displayToken %></a>
+        <% lines.forEach((l) => { %>
+          <p class="text-xs text-slate-500"><%= l.name %> — QR: <span class="num break-all">/join/<%= l.displayToken %></span></p>
+        <% }) %>
+        <form method="post" action="/owner/branches/<%= branch.id %>/display-token" data-confirm="<%= t('owner.regenerateConfirm') %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button type="submit" class="btn btn-secondary btn-sm"><%= t('owner.regenerateToken') %></button>
+        </form>
+      </section>
+
+      <form method="post" action="/owner/branches/<%= branch.id %>/hours" class="card space-y-3" id="hours" x-data="hoursEditor" data-rows="<%= JSON.stringify(hours.map((h) => ({ weekday: h.weekday, openTime: fmt.hhmm(h.openTime), closeTime: fmt.hhmm(h.closeTime) }))) %>">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <h2 class="section-title"><%= t('owner.hours') %></h2>
+        <p class="hint"><%= t('owner.hoursHint') %></p>
+        <template x-for="(row, index) in rows" x-bind:key="index">
+          <div class="flex items-center gap-2">
+            <select name="weekday" class="input w-28 px-2" x-model.number="row.weekday" aria-label="<%= t('owner.weekdaysLabel') %>">
+              <% [1, 2, 3, 4, 5, 6, 7].forEach((d) => { %><option value="<%= d %>"><%= t(`weekdays.${d}`) %></option><% }) %>
+            </select>
+            <input type="time" name="openTime" class="input px-2" x-model="row.openTime" aria-label="<%= t('owner.openTime') %>" required>
+            <input type="time" name="closeTime" class="input px-2" x-model="row.closeTime" aria-label="<%= t('owner.closeTime') %>" required>
+            <button type="button" class="btn btn-ghost btn-sm text-rose-700" @click="remove(index)" aria-label="<%= t('common.delete') %>">✕</button>
+          </div>
+        </template>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-ghost btn-sm" @click="add">➕ <%= t('owner.addHours') %></button>
+          <button type="submit" class="btn btn-secondary btn-sm"><%= t('common.save') %></button>
+        </div>
+      </form>
+
+      <section class="card space-y-3" id="holidays">
+        <h2 class="section-title"><%= t('owner.holidays') %></h2>
+        <ul class="divide-y divide-slate-100 text-sm">
+          <% holidays.forEach((h) => { %>
+            <li class="flex items-center justify-between gap-2 py-1">
+              <span><span class="num"><%= h.date %></span> <%= h.reason || '' %></span>
+              <form method="post" action="/owner/branches/<%= branch.id %>/holidays/<%= h.id %>/delete">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="btn btn-ghost btn-sm text-rose-700" type="submit" aria-label="<%= t('common.delete') %>">✕</button>
+              </form>
+            </li>
+          <% }) %>
+        </ul>
+        <form method="post" action="/owner/branches/<%= branch.id %>/holidays" class="grid gap-2">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="date" name="date" class="input" required aria-label="<%= t('common.date') %>">
+          <input name="reason" class="input" placeholder="<%= t('common.reason') %>" maxlength="120">
+          <button class="btn btn-secondary btn-sm" type="submit"><%= t('owner.addHoliday') %></button>
+        </form>
+      </section>
+    </aside>
+  <% } %>
+</div>

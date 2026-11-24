@@ -1,0 +1,30 @@
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="page-title"><%= t('admin.businesses') %></h1>
+  <a class="btn btn-primary" href="/admin/businesses/new">➕ <%= t('admin.newBusiness') %></a>
+</div>
+<% if (!list.length) { %>
+  <%- include('../../partials/empty', { message: t('common.noResults'), icon: '🏢' }) %>
+<% } else { %>
+  <div class="card table-wrap">
+    <table class="table">
+      <thead><tr><th><%= t('common.business') %></th><th><%= t('admin.ownerSection') %></th><th><%= t('common.branches') %></th><th><%= t('common.status') %></th><th></th></tr></thead>
+      <tbody>
+        <% list.forEach((b) => { %>
+          <tr>
+            <td><span class="font-semibold"><%= b.name %></span><br><span class="num text-xs text-slate-500"><%= b.slug %></span></td>
+            <td><%= b.ownerName || '—' %><br><span class="num text-xs text-slate-500"><%= b.ownerEmail || '' %></span></td>
+            <td class="num"><%= b.branchCount %></td>
+            <td><span class="badge <%= b.isActive ? 'badge-green' : 'badge-red' %>"><%= b.isActive ? t('common.active') : t('common.inactive') %></span></td>
+            <td>
+              <form method="post" action="/admin/businesses/<%= b.id %>/active" data-confirm="<%= b.isActive ? t('admin.suspend') : t('admin.activate') %>?">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="active" value="<%= b.isActive ? '0' : '1' %>">
+                <button class="btn btn-sm <%= b.isActive ? 'btn-secondary' : 'btn-primary' %>" type="submit"><%= b.isActive ? t('admin.suspend') : t('admin.activate') %></button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

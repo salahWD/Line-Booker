@@ -1,0 +1,27 @@
+<div class="mx-auto max-w-md">
+  <div class="card space-y-5">
+    <div>
+      <h1 class="page-title"><%= t('auth.verifyTitle') %></h1>
+      <p class="muted mt-1"><%= t('auth.verifyIntro', { phone: '' }) %> <span class="num font-semibold"><%= phone %></span></p>
+    </div>
+    <form method="post" action="/login/verify" class="space-y-4">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="next" value="<%= next %>">
+      <%- include('../../partials/field', { name: 'code', label: t('auth.code'), required: true, value: '', inputClass: 'text-center text-2xl tracking-[0.5em]', attrs: 'inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" dir="ltr" autofocus' }) %>
+      <button type="submit" class="btn btn-primary w-full"><%= t('auth.verify') %></button>
+    </form>
+    <div class="flex items-center justify-between gap-2 text-sm" x-data="countdown" data-seconds="<%= resendIn %>">
+      <form method="post" action="/login/resend">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="next" value="<%= next %>">
+        <button type="submit" class="btn btn-ghost btn-sm" x-bind:disabled="remaining > 0" <%= resendIn > 0 ? 'disabled' : '' %>>
+          <%= t('auth.resend') %> <span class="num" x-show="remaining > 0" x-text="'(' + remaining + ')'"></span>
+        </button>
+      </form>
+      <a class="text-brand-700 hover:underline" href="/login"><%= t('auth.changePhone') %></a>
+    </div>
+    <% if (mockNotifications) { %>
+      <p class="alert alert-info"><span aria-hidden="true">🧪</span><span><%= t('auth.devHint') %> <a class="font-semibold underline" href="/dev/notifications" target="_blank" rel="noopener"><%= t('auth.devLink') %></a></span></p>
+    <% } %>
+  </div>
+</div>
