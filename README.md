@@ -255,29 +255,36 @@ confirmed ─check-in on the day─▶ checked_in (ticket in the line) ─▶ co
 
 Hostinger's **Business / Unlimited** web hosting (and Cloud plans) run Node.js web apps with a MariaDB database. Premium does not run Node.js.
 
-1. **Database.** hPanel → Websites → Manage → Databases → create a database and user. Note the name, user and password (host is `localhost` for the app).
-2. **App.** hPanel → Websites → Add website → **Node.js web app** → import this GitHub repository (or upload a .zip without `node_modules`).
-   - Framework: **Express** (or "Other"). Node version: **20 or 22**.
-   - Build command: `npm run build` · Start command / entry file: `npm start` / `src/server.js`.
-3. **Environment variables** (in the app's settings):
+**How Hostinger runs the app** (seen on the server):
+- hPanel clones the GitHub branch, runs `npm install` and `npm run build`, and keeps each build in `~/domains/DOMAIN/hbuilds/versions/<id>/nodejs`. `hbuilds/current` points at the live one.
+- **Pushing to the connected branch redeploys automatically.**
+- LiteSpeed runs the entry file through Passenger. The app must call `listen()` within about 3 seconds: `src/server.js` listens first and answers 503 until migrations and jobs are ready (a first migration takes several seconds).
+- Console output goes to `hbuilds/current/nodejs/console.log`. `touch hbuilds/current/nodejs/tmp/restart.txt` restarts the app.
+- Each build gets a fresh folder, so anything written inside the app folder is lost on the next deploy. Uploads and settings live outside it.
 
-   | Variable | Value |
-   |---|---|
-   | `NODE_ENV` | `production` |
-   | `APP_URL` | `https://your-domain` |
-   | `TRUST_PROXY` | `1` |
-   | `DATABASE_URL` | `mysql://USER:PASSWORD@localhost:3306/DATABASE` (URL-encode special characters) |
-   | `RUN_MIGRATIONS` | `true` (applies new migrations on every start) |
-   | `SESSION_SECRET`, `OTP_SECRET` | two different random strings, 32+ characters |
-   | `CRON_SECRET` | a random string (see step 5) |
-   | `UPLOAD_DIR` | an absolute folder outside the app, e.g. `/home/USER/dawri-uploads` |
-   | `SMS_PROVIDER`, `TWILIO_*` | `twilio` + your Twilio credentials (customers cannot sign in without real SMS) |
-   | `FIREBASE_*` | optional, for push alerts |
-
-4. **First admin.** Over SSH (hPanel → Advanced → SSH Access), in the app folder:
-   `npm run create-admin -- --email you@example.com --phone 70123456 --password 'a-long-password'`
+### One-time setup
+1. **Database.** hPanel → Databases → Management: create a database and user (host `localhost` for the app).
+2. **Private settings file.** Settings live in `~/dawri/.env` (chmod 600, outside the app folder), with payment proofs in `~/dawri/uploads`. The app loads the file through `ENV_FILE`, so it survives redeploys and can be edited over SSH. It needs:
+   - `NODE_ENV=production`, `APP_URL=https://your-domain`, `TRUST_PROXY=1`;
+   - `DATABASE_URL=mysql://USER:PASSWORD@localhost:3306/DATABASE` (URL-encode special characters);
+   - `RUN_MIGRATIONS=true`, `RUN_JOBS=true`, `DB_POOL_SIZE=5`;
+   - random `SESSION_SECRET`, `OTP_SECRET`, `CRON_SECRET`, `SMS_WEBHOOK_SECRET`;
+   - `UPLOAD_DIR=/home/USER/dawri/uploads`;
+   - `SMS_PROVIDER=twilio` + `TWILIO_*` (customers cannot sign in without real SMS), and optionally `FIREBASE_*`.
+3. **App.** hPanel → Websites → Add website → **Node.js web app** → import from GitHub (this repository, branch `main`):
+   - Framework **Express** (or Other), Node **22**, package manager npm;
+   - build command `npm run build`, entry file `src/server.js`;
+   - one environment variable: `ENV_FILE=/home/USER/dawri/.env`.
+4. **First admin**, over SSH from the live build folder:
+   ```
+   cd ~/domains/DOMAIN/hbuilds/current/nodejs
+   ENV_FILE=~/dawri/.env /opt/alt/alt-nodejs22/root/usr/bin/node scripts/create-admin.js --email you@example.com --password 'a-long-password'
+   ```
    Then sign in at `/staff/login` and set the real Whish link in Admin → Settings.
-5. **Cron job** (hPanel → Advanced → Cron Jobs), every minute:
+5. **Cron job** (hPanel → Advanced → Cron Jobs; there is no `crontab` over SSH), every minute:
    `curl -s "https://your-domain/internal/tick?key=CRON_SECRET" > /dev/null`
    This keeps alerts, hold expiry and retries running even when the host pauses an idle app.
 6. **Never** run `npm run db:seed` / `db:reset` on the live site: they refuse in production anyway.
+
+### Later deploys
+Push (or merge) to `main`: Hostinger rebuilds and restarts, and pending migrations run on start. Check `console.log` and `/healthz` afterwards.

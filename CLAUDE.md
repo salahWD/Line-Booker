@@ -36,7 +36,12 @@ npm run db:migrate
 npm run worker        # jobs only (set RUN_JOBS=false on web processes)
 npm run create-admin -- --email … --password …   # real admin on a live site (seed refuses in production)
 ```
-- Deployment steps for Hostinger are in README → "Deploying to Hostinger". Secrets for the deploy live in the gitignored `.env.production` (filled in by the user); SSH key for the server: `~/.ssh/dawri_hostinger`.
+- Deployment steps for Hostinger are in README → "Deploying to Hostinger". The user fills in the gitignored `.env.production` with what they have (SSH, DB, domain, Twilio).
+- **Server:** `ssh -i ~/.ssh/dawri_hostinger -p 65002 u999075632@46.202.183.250`.
+  - The account also hosts the user's **other live sites** under `~/domains`. Touch nothing outside `~/dawri` and this app's own domain folder.
+  - Hostinger throttles rapid SSH connections (banner timeouts), so batch commands into one session.
+  - The live settings are in `~/dawri/.env` (the app reads them via `ENV_FILE`; the secrets were generated on the server, so don't copy them out). Node binaries: `/opt/alt/alt-nodejs22/root/usr/bin/node`.
+- **Local test DB:** a portable MariaDB 11.8 in the session scratchpad, started with `mariadbd.exe --defaults-file=<datadir>/my.ini` on port 3307 (root/root). It matches `.env`.
 - `.env` is not in git. Copy `.env.example` and set random `SESSION_SECRET` and `OTP_SECRET`.
 - The seed is tied to today's date (live queues, slots, appointments). Run `npm run db:reset` again before a demo.
 - With the mock SMS/push providers, OTP codes and messages appear at `/dev/notifications` and in the console.
@@ -85,7 +90,10 @@ Note kinds are `customer`, `internal` and `shared`. Customers may only write `cu
 - **Windows:** Git Bash mangles Arabic in curl arguments (`?????`), so test Arabic input with Node `fetch` instead. Stopping a dev server from a tool can leave orphan `node` / `mariadbd` processes: check the port and stop them by PID (after checking their command line).
 
 ## Status (end of the first build)
-- All 5 build stages are done. On PostgreSQL `npm run check` passed 34/34; the MySQL port must pass the same 34 checks before merging `mysql-hostinger` into `main`. The main flows were exercised end to end over HTTP: OTP login, take a number, call/complete, booking + hold expiry, payment submit/confirm/reject, upload safety, CSRF, SSE, CSV export.
+- All 5 build stages are done. The MySQL port (branch `mysql-hostinger`) passes `npm run check` 34/34 on MariaDB 11.8, the same version Hostinger runs.
+  - A 117-request HTTP smoke test of every role passed. It covered OTP login, take a number, call/complete, booking, payment with proof upload, admin confirm/reject, reports + CSV, SSE and the cron tick.
+  - A production-mode simulation also passed: empty latin1 DB migrated on start, secure cookies behind a proxy, `/dev` hidden, seed/reset refused.
+- Next step: merge into `main` (the branch Hostinger deploys from) once the user says to deploy.
 - **Mocked or untested:**
   - SMS uses the mock provider. The Twilio adapter is written but has never been run against a real account.
   - Real FCM push has never been tested (it needs Firebase keys in `.env`).

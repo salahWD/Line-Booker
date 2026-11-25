@@ -1,7 +1,12 @@
 // Loads .env and validates every setting once at startup, so the rest of the code
 // can import `env` and trust its types. A bad or missing value stops the app early.
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+// Real environment variables always win. ENV_FILE (an absolute path) lets a host keep the
+// secrets in a private file outside the app folder, which survives redeploys (used on Hostinger).
+if (process.env.ENV_FILE) dotenv.config({ path: process.env.ENV_FILE, quiet: true });
+dotenv.config({ quiet: true });
 
 const bool = z
   .union([z.boolean(), z.string()])
