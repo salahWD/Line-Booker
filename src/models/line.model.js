@@ -1,7 +1,7 @@
 // Lines (e.g. one per clinic) and their pause history.
 import { and, eq, asc, inArray, isNull, sql } from 'drizzle-orm';
-import { lines, linePauses, branches, businesses } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { lines, linePauses, lineLocks, branches, businesses } from './schema/index.js';
+import { exec, one, insertOne, updateOne } from './db-helpers.js';
 
 export async function findById(id, tx) {
   return one(await exec(tx).select().from(lines).where(eq(lines.id, id)));
@@ -49,11 +49,11 @@ export async function listAllActive(tx) {
 }
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(lines).values(data).returning());
+  return insertOne(lines, data, tx);
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(lines).set(data).where(eq(lines.id, id)).returning());
+  return updateOne(lines, id, data, tx);
 }
 
 /**
@@ -61,7 +61,8 @@ export async function update(id, data, tx) {
  * Two operators pressing "call next" at the same moment are handled one after the other.
  */
 export async function lock(lineId, tx) {
-  await tx.execute(sql`select pg_advisory_xact_lock(${lineId})`);
+  // Upsert = take (or create) the line's lock row; InnoDB keeps it locked until commit.
+  await tx.insert(lineLocks).values({ lineId }).onDuplicateKeyUpdate({ set: { lineId } });
 }
 
 // ── Pauses ─────────────────────────────────────────────────────

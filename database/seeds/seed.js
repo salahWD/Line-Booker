@@ -3,10 +3,21 @@
 // and appointments in every state. Run on an empty database: `npm run db:reset`.
 import { DateTime } from 'luxon';
 import bcrypt from 'bcryptjs';
-import { sql } from 'drizzle-orm';
+import { sql, and, eq } from 'drizzle-orm';
+import { env } from '../../src/config/env.js';
 import { db, pool } from '../../src/config/db.js';
 import * as s from '../../src/models/schema/index.js';
+import { insertOne, rows as rawRows, utcDate } from '../../src/models/db-helpers.js';
 import { randomToken, appointmentReference, ticketDisplayCode } from '../../src/utils/codes.js';
+
+// The demo accounts have published passwords, so this must never run on a live site.
+if (env.isProduction) {
+  console.error('Refusing to load demo data in production. Use `npm run create-admin` instead.');
+  process.exit(1);
+}
+
+/** Inserts one row and returns it as stored. */
+const insert = (table, values) => insertOne(table, values);
 
 const TZ = 'Asia/Beirut';
 const NOW = DateTime.now().setZone(TZ);
@@ -29,18 +40,15 @@ const hash = (password) => bcrypt.hashSync(password, 10);
 const local = (date, hhmm) => DateTime.fromISO(`${date}T${hhmm}`, { zone: TZ });
 
 // ── Safety check ─────────────────────────────────────────────────
-const [{ n }] = (await db.execute(sql`select count(*)::int as n from users`)).rows;
-if (n > 0) {
+const [{ n }] = await rawRows(sql`select count(*) as n from users`);
+if (Number(n) > 0) {
   console.error('The database already has data. Run `npm run db:reset` to rebuild it with demo data.');
   await pool.end();
   process.exit(1);
 }
 
 // ── Platform ─────────────────────────────────────────────────────
-const [admin] = await db
-  .insert(s.users)
-  .values({ role: 'platform_admin', name: 'إدارة المنصة', email: 'admin@dawri.test', phone: '+96170000001', passwordHash: hash('Admin@2026') })
-  .returning();
+const admin = await insert(s.users, { role: 'platform_admin', name: 'إدارة المنصة', email: 'admin@dawri.test', phone: '+96170000001', passwordHash: hash('Admin@2026') });
 
 await db.insert(s.platformSettings).values({
   id: 1,
@@ -148,10 +156,10 @@ const customersData = [
   ['جورج معلوف', '+96170123411'],
   ['سارة يموت', '+96170123412'],
 ];
-const customers = await db
-  .insert(s.users)
-  .values(customersData.map(([name, phone]) => ({ role: 'customer', name, phone, phoneVerifiedAt: NOW.minus({ days: 40 }).toJSDate() })))
-  .returning();
+const customers = [];
+for (const [name, phone] of customersData) {
+  customers.push(await insert(s.users, { role: 'customer', name, phone, phoneVerifiedAt: NOW.minus({ days: 40 }).toJSDate() }));
+}
 const demoCustomer = customers[0];
 
 const guestNames = ['أبو أحمد', 'أم خليل', 'زياد', 'هالة', 'منى', 'يوسف', 'سمير', 'ديانا', 'إيلي', 'رامي', 'خديجة', 'وسام', 'ميشال', 'بلال', 'جنى'];
@@ -159,40 +167,28 @@ const guestNames = ['أبو أحمد', 'أم خليل', 'زياد', 'هالة', 
 const allLines = []; // { line, branch, config }
 const owners = {};
 for (const data of businessesData) {
-  const [business] = await db.insert(s.businesses).values(data.business).returning();
-  const [owner] = await db
-    .insert(s.users)
-    .values({ role: 'business_owner', ...data.owner, passwordHash: hash('Owner@2026'), businessId: business.id })
-    .returning();
+  const business = await insert(s.businesses, data.business);
+  const owner = await insert(s.users, { role: 'business_owner', ...data.owner, passwordHash: hash('Owner@2026'), businessId: business.id });
   owners[business.slug] = owner;
 
   const branchBySlug = {};
   for (const b of data.branches) {
     const { hours, lines, holiday, ...fields } = b;
-    const [branch] = await db
-      .insert(s.branches)
-      .values({ ...fields, businessId: business.id, timezone: TZ, displayToken: randomToken() })
-      .returning();
+    const branch = await insert(s.branches, { ...fields, businessId: business.id, timezone: TZ, displayToken: randomToken() });
     branchBySlug[branch.slug] = branch;
     await db.insert(s.branchHours).values(hours.map((h) => ({ ...h, branchId: branch.id })));
     if (holiday) await db.insert(s.branchHolidays).values({ branchId: branch.id, date: NOW.plus({ days: holiday.offsetDays }).toISODate(), reason: holiday.reason });
 
     for (const [index, l] of lines.entries()) {
       const { slots, ...lineFields } = l;
-      const [line] = await db
-        .insert(s.lines)
-        .values({ ...lineFields, businessId: business.id, branchId: branch.id, sortOrder: index, displayToken: randomToken() })
-        .returning();
+      const line = await insert(s.lines, { ...lineFields, businessId: business.id, branchId: branch.id, sortOrder: index, displayToken: randomToken() });
       allLines.push({ line, branch, hours, slots, business });
     }
   }
 
   for (const op of data.operators) {
     const { branches: branchSlugs, ...fields } = op;
-    const [operator] = await db
-      .insert(s.users)
-      .values({ role: 'branch_operator', ...fields, passwordHash: hash('Operator@2026'), businessId: business.id })
-      .returning();
+    const operator = await insert(s.users, { role: 'branch_operator', ...fields, passwordHash: hash('Operator@2026'), businessId: business.id });
     await db.insert(s.operatorBranches).values(branchSlugs.map((slug) => ({ userId: operator.id, branchId: branchBySlug[slug].id })));
   }
 }
@@ -210,8 +206,9 @@ const slotCache = new Map(); // `${lineId}|${iso}` → slot row
 async function ensureSlot(entry, startsAt, minutes, capacity = 1) {
   const key = `${entry.line.id}|${startsAt.toISO()}`;
   if (slotCache.has(key)) return slotCache.get(key);
-  const [slot] = await db
+  await db
     .insert(s.appointmentSlots)
+    .ignore()
     .values({
       businessId: entry.line.businessId,
       branchId: entry.line.branchId,
@@ -221,9 +218,11 @@ async function ensureSlot(entry, startsAt, minutes, capacity = 1) {
       localTime: startsAt.toFormat('HH:mm'),
       durationMinutes: minutes,
       capacity,
-    })
-    .onConflictDoNothing()
-    .returning();
+    });
+  const [slot] = await db
+    .select()
+    .from(s.appointmentSlots)
+    .where(and(eq(s.appointmentSlots.lineId, entry.line.id), eq(s.appointmentSlots.startsAt, startsAt.toJSDate())));
   slotCache.set(key, slot);
   return slot;
 }
@@ -243,9 +242,7 @@ function estimateAtJoin(ahead, line) {
 }
 
 async function createAppointment(entry, slot, customer, fields) {
-  const [a] = await db
-    .insert(s.appointments)
-    .values({
+  return insert(s.appointments, {
       reference: appointmentReference(),
       slotId: slot.id,
       businessId: entry.line.businessId,
@@ -259,9 +256,7 @@ async function createAppointment(entry, slot, customer, fields) {
       currency: entry.branch.currency,
       feeType: entry.branch.feeType,
       ...fields,
-    })
-    .returning();
-  return a;
+    });
 }
 
 const txRef = () => `WH${int(10000000, 99999999)}`;
@@ -470,19 +465,18 @@ for (const entry of allLines) {
       });
     }
   }
-  if (rows.length) await db.insert(s.appointmentSlots).values(rows).onConflictDoNothing();
+  if (rows.length) await db.insert(s.appointmentSlots).ignore().values(rows);
 }
 
 /** n-th free slot of a line, `daysAhead` days from now. */
 async function futureSlot(entry, daysAhead, nth = 0) {
   const date = NOW.plus({ days: daysAhead }).toISODate();
-  const result = await db.execute(sql`
+  const [row] = await rawRows(sql`
     select * from appointment_slots
     where line_id = ${entry.line.id} and local_date >= ${date} and is_open and reserved_count < capacity and starts_at > now()
-    order by starts_at offset ${nth} limit 1`);
-  const row = result.rows[0];
-  // Raw queries return timestamps as strings — convert for the typed insert.
-  return row && { id: row.id, startsAt: new Date(row.starts_at), localDate: row.local_date, localTime: row.local_time };
+    order by starts_at limit 1 offset ${nth}`);
+  // Raw queries return timestamps as UTC strings — convert for the typed insert.
+  return row && { id: row.id, startsAt: utcDate(row.starts_at), localDate: row.local_date, localTime: row.local_time };
 }
 
 const byName = (branchSlug, lineName) => allLines.find((e) => e.branch.slug === branchSlug && e.line.name === lineName);
@@ -543,7 +537,7 @@ for (const [i, entry] of [pediatrics, cardiology, jounieh, tripoli].entries()) {
 
 // Notes with different visibility on the demo customer's confirmed appointment.
 if (demoConfirmed) {
-  const hamraOperator = (await db.execute(sql`select id from users where email = 'reem@arz.test'`)).rows[0];
+  const [hamraOperator] = await rawRows(sql`select id from users where email = 'reem@arz.test'`);
   await db.insert(s.notes).values([
     { businessId: demoConfirmed.businessId, branchId: demoConfirmed.branchId, appointmentId: demoConfirmed.id, authorId: demoCustomer.id, kind: 'customer', body: 'أرجو إحضار نتائج تخطيط القلب السابق إن لزم.' },
     { businessId: demoConfirmed.businessId, branchId: demoConfirmed.branchId, appointmentId: demoConfirmed.id, authorId: hamraOperator.id, kind: 'shared', body: 'نعم، يرجى إحضار التخطيط السابق وقائمة الأدوية الحالية. الحضور قبل الموعد بـ 15 دقيقة.' },
@@ -585,9 +579,7 @@ async function liveLine(entry, { served, called, waiting, includeDemo = false, a
     const number = nextNumber(line.id, TODAY);
     const ahead = rows.filter((o) => o.joinedAt < r.joinedAt && (!o.calledAt || o.calledAt > r.joinedAt)).length;
     const [low, high] = estimateAtJoin(ahead, line);
-    const [ticket] = await db
-      .insert(s.queueTickets)
-      .values({
+    const ticket = await insert(s.queueTickets, {
         businessId: line.businessId,
         branchId: line.branchId,
         lineId: line.id,
@@ -613,8 +605,7 @@ async function liveLine(entry, { served, called, waiting, includeDemo = false, a
         estimateHighMin: high,
         estimateMethod: 'configured',
         actualWaitSeconds: r.calledAt ? Math.round(r.calledAt.diff(r.joinedAt, 'seconds').seconds) : null,
-      })
-      .returning();
+      });
     inserted.push(ticket);
   }
   return inserted;
@@ -655,7 +646,7 @@ await liveLine(lab, { served: 14, called: 2, waiting: 5 });
 // Keep the database's ticket counters in step with the numbers we used.
 for (const [key, lastNumber] of counters) {
   const [lineId, serviceDate] = key.split('|');
-  await db.insert(s.queueCounters).values({ lineId: Number(lineId), serviceDate, lastNumber }).onConflictDoUpdate({ target: [s.queueCounters.lineId, s.queueCounters.serviceDate], set: { lastNumber } });
+  await db.insert(s.queueCounters).values({ lineId: Number(lineId), serviceDate, lastNumber }).onDuplicateKeyUpdate({ set: { lastNumber } });
 }
 
 // ── A few audit entries so the log is not empty ──────────────────

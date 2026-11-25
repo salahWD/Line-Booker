@@ -1,7 +1,7 @@
 // Branches with their opening hours and holidays.
-import { and, eq, asc, gte, ilike, or, inArray, sql } from 'drizzle-orm';
+import { and, eq, asc, gte, like, or, inArray, sql } from 'drizzle-orm';
 import { branches, businesses, branchHours, branchHolidays } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne, affected } from './db-helpers.js';
 
 export async function findById(id, tx) {
   return one(await exec(tx).select().from(branches).where(eq(branches.id, id)));
@@ -26,7 +26,7 @@ export async function listPublic(search, tx) {
   const conditions = [eq(branches.isActive, true), eq(businesses.isActive, true)];
   if (search) {
     const like = `%${search}%`;
-    conditions.push(or(ilike(branches.name, like), ilike(branches.city, like), ilike(businesses.name, like)));
+    conditions.push(or(like(branches.name, like), like(branches.city, like), like(businesses.name, like)));
   }
   return exec(tx)
     .select({
@@ -60,15 +60,15 @@ export async function listAll(tx) {
 }
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(branches).values(data).returning());
+  return insertOne(branches, data, tx);
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(branches).set(data).where(eq(branches.id, id)).returning());
+  return updateOne(branches, id, data, tx);
 }
 
 export async function count(tx) {
-  const [row] = await exec(tx).select({ n: sql`count(*)::int` }).from(branches);
+  const [row] = await exec(tx).select({ n: sql`count(*)`.mapWith(Number) }).from(branches);
   return row.n;
 }
 
@@ -106,7 +106,7 @@ export async function holidayDates(branchId, fromDate, toDate, tx) {
 }
 
 export async function addHoliday(branchId, date, reason, tx) {
-  await exec(tx).insert(branchHolidays).values({ branchId, date, reason }).onConflictDoNothing();
+  await exec(tx).insert(branchHolidays).ignore().values({ branchId, date, reason });
 }
 
 export async function removeHoliday(branchId, holidayId, tx) {

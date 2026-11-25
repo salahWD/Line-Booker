@@ -4,15 +4,14 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import session from 'express-session';
-import connectPgSimple from 'connect-pg-simple';
+import { MySqlSessionStore } from './config/sessionStore.js';
 import expressLayouts from 'express-ejs-layouts';
 import { env } from './config/env.js';
-import { pool } from './config/db.js';
 import { loadUser } from './middleware/auth.js';
 import { locals, flashHelper } from './middleware/locals.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
-import { webhookRoutes } from './routes/webhooks.routes.js';
+import { webhookRoutes, internalRoutes } from './routes/webhooks.routes.js';
 import { routes } from './routes/index.js';
 
 const srcDir = path.dirname(fileURLToPath(import.meta.url));
@@ -68,12 +67,11 @@ app.get('/healthz', (req, res) => res.json({ ok: true }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(express.json({ limit: '100kb' }));
 
-// ── Sessions stored in PostgreSQL ────────────────────────────────
-const PgStore = connectPgSimple(session);
+// ── Sessions stored in MySQL ────────────────────────────────
 app.use(
   session({
     name: 'sid',
-    store: new PgStore({ pool, tableName: 'session', createTableIfMissing: false }),
+    store: new MySqlSessionStore(),
     secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -92,6 +90,7 @@ app.use(locals);
 
 // Provider callbacks authenticate with a shared secret instead of a CSRF token.
 app.use('/webhooks', webhookRoutes);
+app.use('/internal', internalRoutes);
 
 app.use(csrfProtection);
 app.use(routes);

@@ -1,4 +1,4 @@
-// End-of-day housekeeping, run every 15 minutes by a job (each branch uses its own timezone):
+// End-of-day housekeeping, run every 15 minutes by the job runner (each branch uses its own timezone):
 //   • tickets left from previous days → expired
 //   • confirmed / checked-in appointments of previous days that never completed → no_show
 import { transaction } from '../config/db.js';
@@ -6,6 +6,7 @@ import * as branchModel from '../models/branch.model.js';
 import * as lineModel from '../models/line.model.js';
 import * as ticketModel from '../models/ticket.model.js';
 import * as misc from '../models/misc.model.js';
+import { deleteExpiredSessions } from '../config/sessionStore.js';
 import * as realtime from './realtime.service.js';
 import { closePastDays } from './appointment.service.js';
 import { todayIn } from '../utils/dates.js';
@@ -27,4 +28,5 @@ export async function dayClose() {
 
 export async function hourlyCleanup() {
   await misc.deleteOldOtps();
+  await deleteExpiredSessions();
 }

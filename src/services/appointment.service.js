@@ -31,7 +31,6 @@ import * as audit from './audit.service.js';
 import * as settings from './settings.service.js';
 import * as notifications from './notification.service.js';
 import * as realtime from './realtime.service.js';
-import { enqueue, QUEUES } from '../jobs/boss.js';
 import { appointmentReference } from '../utils/codes.js';
 import { formatMoney, isFree } from '../utils/money.js';
 import { formatDate, hhmm, todayIn } from '../utils/dates.js';
@@ -52,14 +51,6 @@ function smsVars(appointment, branch) {
   };
 }
 
-/** Schedules the reminder job (it re-checks the appointment when it runs). */
-export function scheduleReminder(tx, appointment) {
-  const sendAt = new Date(new Date(appointment.startsAt).getTime() - env.REMINDER_HOURS_BEFORE * 3600_000);
-  if (sendAt <= new Date()) return;
-  tx.afterCommit(() =>
-    enqueue(QUEUES.REMINDER, { appointmentId: appointment.id, startsAt: new Date(appointment.startsAt).toISOString() }, { startAfter: sendAt }),
-  );
-}
 
 async function loadBookableLine(lineId) {
   const found = await lineModel.findWithBranch(Number(lineId));
@@ -126,8 +117,7 @@ export async function hold(customer, lineId, { slotId, note }) {
       appointmentId: appointment.id,
     });
 
-    if (free) scheduleReminder(tx, appointment);
-    else tx.afterCommit(() => enqueue(QUEUES.HOLD_EXPIRY, { appointmentId: appointment.id }, { startAfter: appointment.holdExpiresAt }));
+    // Hold expiry and the reminder are handled by the job sweep (see jobs/index.js).
     return appointment;
   });
 }
@@ -279,7 +269,6 @@ export async function reschedule(customer, reference, newSlotId) {
       { from: `${locked.localDate} ${hhmm(locked.localTime)}`, to: `${slot.localDate} ${hhmm(slot.localTime)}` },
       tx,
     );
-    if (updated.status === 'confirmed') scheduleReminder(tx, updated);
     return updated;
   });
 }
@@ -302,16 +291,14 @@ export async function markNoShow(user, appointmentId) {
   });
 }
 
-/** Reminder job: only sends if the appointment is still confirmed for the same time. */
-export async function sendReminder(appointmentId, startsAtIso) {
+/** Sends one reminder; the conditional claim makes sure it goes out only once. */
+export async function sendReminder(appointmentId) {
   const detail = await appointmentModel.findDetailById(appointmentId);
   if (!detail) return;
   const { appointment } = detail;
-  if (appointment.status !== 'confirmed' || appointment.reminderSentAt) return;
-  if (new Date(appointment.startsAt).toISOString() !== startsAtIso) return; // rescheduled since
 
   await transaction(async (tx) => {
-    await appointmentModel.update(appointment.id, { reminderSentAt: new Date() }, tx);
+    if (!(await appointmentModel.claimReminder(appointment.id, tx))) return;
     await notifications.notifyCustomer(tx, {
       userId: appointment.customerId,
       phone: detail.customerPhone,
@@ -322,6 +309,13 @@ export async function sendReminder(appointmentId, startsAtIso) {
       appointmentId: appointment.id,
     });
   });
+}
+
+/** Job sweep: reminders that are due now (REMINDER_HOURS_BEFORE hours before the start). */
+export async function sendDueReminders() {
+  const due = await appointmentModel.dueReminders(env.REMINDER_HOURS_BEFORE, 100);
+  for (const { id } of due) await sendReminder(id);
+  return due.length;
 }
 
 /** Day close: appointments of past days that never completed become no-shows. */

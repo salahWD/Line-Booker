@@ -1,10 +1,10 @@
 // Reviews: one per completed appointment, with an optional owner reply.
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { reviews, users, branches, lines, appointments } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne, affected } from './db-helpers.js';
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(reviews).values(data).returning());
+  return insertOne(reviews, data, tx);
 }
 
 export async function findById(id, tx) {
@@ -16,7 +16,7 @@ export async function findByAppointment(appointmentId, tx) {
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(reviews).set(data).where(eq(reviews.id, id)).returning());
+  return updateOne(reviews, id, data, tx);
 }
 
 const listColumns = {
@@ -59,7 +59,7 @@ export async function listForBusiness(businessId, { branchId } = {}, tx) {
 export async function ratingByBranch(branchIds, tx) {
   if (!branchIds.length) return {};
   const result = await exec(tx)
-    .select({ branchId: reviews.branchId, avg: sql`round(avg(${reviews.rating}), 1)::float`, count: sql`count(*)::int` })
+    .select({ branchId: reviews.branchId, avg: sql`round(avg(${reviews.rating}), 1)`.mapWith(Number), count: sql`count(*)`.mapWith(Number) })
     .from(reviews)
     .where(inArray(reviews.branchId, branchIds))
     .groupBy(reviews.branchId);

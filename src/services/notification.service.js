@@ -2,20 +2,22 @@
 //
 //   1. Inside the business transaction we INSERT a row into `notifications` (status queued).
 //      If the transaction rolls back, no message is ever sent.
-//   2. After commit, a pg-boss job `notify-send` is added for the row.
-//   3. The job sends it through the provider adapter, retrying with backoff on failure,
-//      and records sent/delivered/failed. Push that cannot be delivered falls back to SMS.
-//   4. A sweep every minute re-enqueues rows that never reached the job queue.
+//   2. Right after commit the row is sent in the background (the request does not wait).
+//   3. The provider adapter sends it and we record sent/delivered/failed. A failed attempt
+//      gets a retry time (`nextAttemptAt`, with backoff) and the job sweep (every 15 s)
+//      tries again. Push that cannot be delivered falls back to SMS.
+//   4. The sweep also picks up rows whose sender died mid-send (e.g. the app restarted).
 import { env } from '../config/env.js';
 import { t } from '../locales/ar.js';
 import * as notificationModel from '../models/notification.model.js';
 import * as userModel from '../models/user.model.js';
 import { getSmsProvider } from '../integrations/sms/index.js';
 import { getPushProvider } from '../integrations/push/index.js';
-import { enqueue, QUEUES } from '../jobs/boss.js';
 import { logger } from '../utils/logger.js';
 
-const MAX_ATTEMPTS = 5; // 1 try + 4 pg-boss retries
+const MAX_ATTEMPTS = 5; // 1 try + 4 retries
+/** Wait before the next try after attempt 1, 2, 3, 4: 15 s, 30 s, 60 s, 120 s. */
+const retryDelayMs = (attempts) => 15_000 * 2 ** Math.max(0, attempts - 1);
 
 /** Absolute link for SMS / push. */
 export const absoluteUrl = (path) => `${env.APP_URL}${path}`;
@@ -23,11 +25,15 @@ export const absoluteUrl = (path) => `${env.APP_URL}${path}`;
 /** Message text from the locale file with the app name filled in. */
 export const message = (key, vars) => t(`sms.${key}`, { app: env.APP_NAME, ...vars });
 
-function scheduleSend(tx, id) {
-  tx.afterCommit(async () => {
-    const jobId = await enqueue(QUEUES.NOTIFY_SEND, { id });
-    if (jobId) await notificationModel.markEnqueued([id]);
+/** Sends in the background; a failure is logged and retried later by the job sweep. */
+function sendSoon(id) {
+  setImmediate(() => {
+    sendNotification(id).catch((err) => logger.error(`Notification ${id} could not be sent`, err));
   });
+}
+
+function scheduleSend(tx, id) {
+  tx.afterCommit(() => sendSoon(id));
 }
 
 /**
@@ -47,7 +53,7 @@ export async function queueSms(tx, { to, body, kind, secretBody, userId, appoint
 
 /**
  * Notifies a customer on their phone: push if they enabled it on a device, otherwise SMS.
- * If push fails on every device, the job automatically sends the SMS instead.
+ * If push fails on every device, the SMS is sent instead.
  */
 export async function notifyCustomer(tx, { userId, phone, kind, title, body, link, appointmentId, ticketId }) {
   const tokens = userId ? await notificationModel.activePushTokens(userId, tx) : [];
@@ -65,8 +71,8 @@ export async function notifyCustomer(tx, { userId, phone, kind, title, body, lin
 }
 
 /**
- * Sends one queued notification (called by the `notify-send` job).
- * Throws on a retryable failure so pg-boss retries with backoff.
+ * Sends one queued notification (right after commit, or later by the job sweep).
+ * Safe to call twice: only the caller that claims the row sends it.
  */
 export async function sendNotification(id) {
   const row = await notificationModel.claimForSending(id);
@@ -84,6 +90,7 @@ export async function sendNotification(id) {
         deliveredAt: result.delivered ? new Date() : null,
         secretBody: null, // never keep OTP text once it has been handed over
         lastError: null,
+        nextAttemptAt: null,
       });
       return;
     }
@@ -109,7 +116,7 @@ export async function sendNotification(id) {
     }
 
     if (delivered > 0) {
-      await notificationModel.update(row.id, { status: 'sent', provider: provider.name, sentAt: new Date(), lastError: null });
+      await notificationModel.update(row.id, { status: 'sent', provider: provider.name, sentAt: new Date(), lastError: null, nextAttemptAt: null });
       return;
     }
 
@@ -118,6 +125,7 @@ export async function sendNotification(id) {
       status: 'failed',
       provider: provider.name,
       failedAt: new Date(),
+      nextAttemptAt: null,
       lastError: errors.join(' | ') || 'no active push tokens',
     });
     if (row.fallbackPhone) await sendSmsFallback(row);
@@ -127,13 +135,14 @@ export async function sendNotification(id) {
       status: finalAttempt ? 'failed' : 'queued',
       lastError: err.message,
       failedAt: finalAttempt ? new Date() : null,
+      nextAttemptAt: finalAttempt ? null : new Date(Date.now() + retryDelayMs(row.attempts)),
     });
     if (finalAttempt) {
       logger.error(`Notification ${row.id} failed permanently`, err);
       if (row.channel === 'push' && row.fallbackPhone) await sendSmsFallback(row);
       return;
     }
-    throw err; // let pg-boss retry
+    logger.warn(`Notification ${row.id} attempt ${row.attempts} failed, will retry: ${err.message}`);
   }
 }
 
@@ -148,19 +157,17 @@ async function sendSmsFallback(pushRow) {
     appointmentId: pushRow.appointmentId,
     ticketId: pushRow.ticketId,
   });
-  const jobId = await enqueue(QUEUES.NOTIFY_SEND, { id: row.id });
-  if (jobId) await notificationModel.markEnqueued([row.id]);
+  sendSoon(row.id);
 }
 
-/** Every-minute sweep: re-enqueue notifications that never reached (or got stuck in) the queue. */
-export async function sweepStuck() {
-  const stuck = await notificationModel.listStuck(100);
-  for (const { id } of stuck) {
-    await notificationModel.update(id, { status: 'queued' });
-    const jobId = await enqueue(QUEUES.NOTIFY_SEND, { id });
-    if (jobId) await notificationModel.markEnqueued([id]);
+/** Job sweep: sends rows whose retry time has come and rows whose sender died mid-send. */
+export async function sendDue() {
+  const due = await notificationModel.listDue(100);
+  for (const { id, status } of due) {
+    if (status === 'sending') await notificationModel.update(id, { status: 'queued' }); // lease ran out
+    await sendNotification(id);
   }
-  return stuck.length;
+  return due.length;
 }
 
 /** Delivery status callback from the SMS provider (e.g. Twilio). */

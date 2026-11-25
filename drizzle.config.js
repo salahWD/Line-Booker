@@ -3,7 +3,7 @@ import { defineConfig } from 'drizzle-kit';
 
 // drizzle-kit reads the table definitions and writes SQL migrations to database/migrations.
 export default defineConfig({
-  dialect: 'postgresql',
+  dialect: 'mysql',
   schema: './src/models/schema/index.js',
   out: './database/migrations',
   casing: 'snake_case',

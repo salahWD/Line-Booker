@@ -1,5 +1,5 @@
-// DEVELOPMENT ONLY: drops every table (app, pg-boss and migration history) so that
-// `npm run db:reset` can rebuild the database from migrations + seed data.
+// DEVELOPMENT ONLY: drops every table in the database (including the migration history)
+// so that `npm run db:reset` can rebuild it from migrations + seed data.
 import { env } from '../src/config/env.js';
 import { pool } from '../src/config/db.js';
 
@@ -8,11 +8,16 @@ if (env.isProduction) {
   process.exit(1);
 }
 
-await pool.query(`
-  drop schema if exists public cascade;
-  drop schema if exists pgboss cascade;
-  drop schema if exists drizzle cascade;
-  create schema public;
-`);
-console.log('🧹 Database emptied.');
+const [tables] = await pool.query(
+  "select table_name as name from information_schema.tables where table_schema = database() and table_type = 'BASE TABLE'",
+);
+const conn = await pool.getConnection();
+try {
+  await conn.query('set foreign_key_checks = 0');
+  for (const { name } of tables) await conn.query(`drop table if exists \`${name}\``);
+  await conn.query('set foreign_key_checks = 1');
+} finally {
+  conn.release();
+}
+console.log(`🧹 Database emptied (${tables.length} tables dropped).`);
 await pool.end();

@@ -14,14 +14,18 @@ const schema = z.object({
   APP_URL: z.string().url().default('http://localhost:3000'),
   TRUST_PROXY: z.coerce.number().int().default(0),
 
-  DATABASE_URL: z.string().min(1),
-  EMBEDDED_PG_PORT: z.coerce.number().int().default(5433),
-  EMBEDDED_PG_PASSWORD: z.string().default('postgres'),
+  // mysql://user:password@host:3306/database
+  DATABASE_URL: z.string().startsWith('mysql://', 'DATABASE_URL must start with mysql://'),
+  DB_POOL_SIZE: z.coerce.number().int().min(1).default(10),
+  // Apply pending database migrations when the server starts (handy on hosts without SSH).
+  RUN_MIGRATIONS: bool.default(false),
 
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
   OTP_SECRET: z.string().min(32, 'OTP_SECRET must be at least 32 characters'),
 
   RUN_JOBS: bool.default(true),
+  // Secret for GET /internal/tick?key=… so a hosting cron job can run the background jobs.
+  CRON_SECRET: z.string().default(''),
   REMINDER_HOURS_BEFORE: z.coerce.number().min(0).default(3),
 
   DEFAULT_TIMEZONE: z.string().default('Asia/Beirut'),

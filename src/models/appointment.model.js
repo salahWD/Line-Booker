@@ -1,10 +1,10 @@
 // Appointments and their event history.
-import { and, eq, inArray, desc, asc, or, ilike, sql, lte } from 'drizzle-orm';
+import { and, eq, inArray, desc, asc, or, like, sql, lte, lt } from 'drizzle-orm';
 import { appointments, appointmentEvents, users, lines, branches, businesses } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne, affected } from './db-helpers.js';
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(appointments).values(data).returning());
+  return insertOne(appointments, data, tx);
 }
 
 export async function findById(id, tx) {
@@ -64,7 +64,7 @@ export async function listForStaff({ branchIds, date, lineId, status, q, limit =
   if (date) conditions.push(eq(appointments.localDate, date));
   if (lineId) conditions.push(eq(appointments.lineId, lineId));
   if (status) conditions.push(eq(appointments.status, status));
-  if (q) conditions.push(or(ilike(appointments.reference, `%${q}%`), ilike(users.phone, `%${q}%`), ilike(users.name, `%${q}%`)));
+  if (q) conditions.push(or(like(appointments.reference, `%${q}%`), like(users.phone, `%${q}%`), like(users.name, `%${q}%`)));
   return detailQuery(tx)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(date ? asc(appointments.startsAt) : desc(appointments.startsAt))
@@ -76,13 +76,13 @@ export async function listForStaff({ branchIds, date, lineId, status, q, limit =
  * Returns null if the appointment was already changed by someone else.
  */
 export async function transition(id, { from, paymentFrom }, data, tx) {
-  const conditions = [eq(appointments.id, id), inArray(appointments.status, from)];
+  const conditions = [inArray(appointments.status, from)];
   if (paymentFrom) conditions.push(inArray(appointments.paymentStatus, paymentFrom));
-  return one(await exec(tx).update(appointments).set(data).where(and(...conditions)).returning());
+  return updateOne(appointments, id, data, tx, ...conditions);
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(appointments).set(data).where(eq(appointments.id, id)).returning());
+  return updateOne(appointments, id, data, tx);
 }
 
 /** The customer's confirmed or checked-in appointment on a line for a given day (if any). */
@@ -119,17 +119,55 @@ export async function dueHolds(limit, tx) {
 
 /** Confirmed / checked-in appointments of earlier days that never completed → no-show. */
 export async function markPastAsNoShow(branchId, today, tx) {
-  return exec(tx)
-    .update(appointments)
-    .set({ status: 'no_show', noShowAt: new Date() })
+  const past = await exec(tx)
+    .select({ id: appointments.id, slotId: appointments.slotId })
+    .from(appointments)
     .where(
       and(
         eq(appointments.branchId, branchId),
         inArray(appointments.status, ['confirmed', 'checked_in']),
-        sql`${appointments.localDate} < ${today}`,
+        lt(appointments.localDate, today),
       ),
     )
-    .returning({ id: appointments.id, slotId: appointments.slotId });
+    .for('update');
+  if (past.length) {
+    await exec(tx)
+      .update(appointments)
+      .set({ status: 'no_show', noShowAt: new Date() })
+      .where(inArray(appointments.id, past.map((r) => r.id)));
+  }
+  return past;
+}
+
+/** Marks the reminder as sent — true only for the first caller (and only while still confirmed). */
+export async function claimReminder(id, tx) {
+  const result = await exec(tx)
+    .update(appointments)
+    .set({ reminderSentAt: new Date() })
+    .where(and(eq(appointments.id, id), eq(appointments.status, 'confirmed'), sql`${appointments.reminderSentAt} is null`));
+  return affected(result) > 0;
+}
+
+/**
+ * Confirmed appointments whose reminder is due now: starting within `hoursBefore` hours,
+ * not reminded yet, and booked earlier than that window (late bookings get no reminder).
+ */
+export async function dueReminders(hoursBefore, limit, tx) {
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + hoursBefore * 3600_000);
+  return exec(tx)
+    .select({ id: appointments.id, startsAt: appointments.startsAt })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.status, 'confirmed'),
+        sql`${appointments.reminderSentAt} is null`,
+        sql`${appointments.startsAt} > ${now}`,
+        lte(appointments.startsAt, windowEnd),
+        sql`${appointments.confirmedAt} <= ${appointments.startsAt} - interval ${hoursBefore * 60} minute`,
+      ),
+    )
+    .limit(limit);
 }
 
 /** Today's appointments of a line for the operator console. */

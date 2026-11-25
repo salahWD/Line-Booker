@@ -1,17 +1,17 @@
 // Core tables: businesses, users, branches (+ hours/holidays), operator access,
-// platform settings, sessions, OTP codes and the audit log.
-// Column names are camelCase here and snake_case in PostgreSQL (drizzle `casing: 'snake_case'`).
+// platform settings, sessions, OTP codes, the audit log and the background-job bookkeeping.
+// Column names are camelCase here and snake_case in MySQL (drizzle `casing: 'snake_case'`).
 import { sql } from 'drizzle-orm';
 import {
-  pgTable, integer, text, varchar, boolean, timestamp, numeric, date, time, jsonb, json,
-  smallint, index, unique, check, primaryKey,
-} from 'drizzle-orm/pg-core';
+  mysqlTable, int, text, varchar, boolean, decimal, date, time, smallint,
+  index, unique, check, primaryKey,
+} from 'drizzle-orm/mysql-core';
 import { roleEnum, currencyEnum, feeTypeEnum } from './enums.js';
-import { id, ts, createdAt, updatedAt } from './columns.js';
+import { id, ts, createdAt, updatedAt, json } from './columns.js';
 
-export const businesses = pgTable('businesses', {
+export const businesses = mysqlTable('businesses', {
   id: id(),
-  name: text().notNull(),
+  name: varchar({ length: 160 }).notNull(),
   slug: varchar({ length: 80 }).notNull().unique(),
   phone: varchar({ length: 20 }),
   description: text(),
@@ -20,17 +20,17 @@ export const businesses = pgTable('businesses', {
   updatedAt: updatedAt(),
 });
 
-export const users = pgTable(
+export const users = mysqlTable(
   'users',
   {
     id: id(),
     role: roleEnum().notNull(),
-    name: text().notNull().default(''),
+    name: varchar({ length: 120 }).notNull().default(''),
     phone: varchar({ length: 20 }).unique(),
     email: varchar({ length: 160 }).unique(),
-    passwordHash: text(),
+    passwordHash: varchar({ length: 100 }),
     // Owners and operators belong to exactly one business; admins and customers to none.
-    businessId: integer().references(() => businesses.id),
+    businessId: int().references(() => businesses.id),
     isActive: boolean().notNull().default(true),
     phoneVerifiedAt: ts(),
     lastLoginAt: ts(),
@@ -42,43 +42,43 @@ export const users = pgTable(
       'users_business_matches_role',
       sql`(${t.role} in ('business_owner', 'branch_operator')) = (${t.businessId} is not null)`,
     ),
-    index().on(t.businessId),
+    index('users_business_idx').on(t.businessId),
   ],
 );
 
 // Exactly one row (id = 1): the platform's own Whish Money link and payment rules.
-export const platformSettings = pgTable(
+export const platformSettings = mysqlTable(
   'platform_settings',
   {
-    id: integer().primaryKey().default(1),
+    id: int().primaryKey().default(1),
     whishPaymentUrl: text(),
     paymentInstructions: text(),
-    defaultHoldMinutes: integer().notNull().default(30),
-    updatedById: integer().references(() => users.id),
+    defaultHoldMinutes: int().notNull().default(30),
+    updatedById: int().references(() => users.id),
     updatedAt: updatedAt(),
   },
   (t) => [check('platform_settings_single_row', sql`${t.id} = 1`)],
 );
 
-export const branches = pgTable(
+export const branches = mysqlTable(
   'branches',
   {
     id: id(),
-    businessId: integer().notNull().references(() => businesses.id),
-    name: text().notNull(),
+    businessId: int().notNull().references(() => businesses.id),
+    name: varchar({ length: 160 }).notNull(),
     slug: varchar({ length: 100 }).notNull().unique(),
-    city: text().notNull().default(''),
+    city: varchar({ length: 80 }).notNull().default(''),
     address: text(),
     phone: varchar({ length: 20 }),
     timezone: varchar({ length: 64 }).notNull().default('Asia/Beirut'),
     // Appointment fee set by the business (paid to the platform, verified by the platform admin).
-    feeAmount: numeric({ precision: 12, scale: 2 }).notNull().default('0'),
+    feeAmount: decimal({ precision: 12, scale: 2 }).notNull().default('0'),
     currency: currencyEnum().notNull().default('USD'),
     feeType: feeTypeEnum().notNull().default('deposit'),
-    holdMinutes: integer(), // null = use the platform default
-    minNoticeMinutes: integer().notNull().default(60),
-    bookingWindowDays: integer().notNull().default(30),
-    cancellationCutoffHours: integer().notNull().default(24),
+    holdMinutes: int(), // null = use the platform default
+    minNoticeMinutes: int().notNull().default(60),
+    bookingWindowDays: int().notNull().default(30),
+    cancellationCutoffHours: int().notNull().default(24),
     allowReschedule: boolean().notNull().default(true),
     cancellationPolicyText: text(),
     displayToken: varchar({ length: 64 }).notNull().unique(),
@@ -90,17 +90,17 @@ export const branches = pgTable(
     // Lets child tables use a composite FK so a row can never point at another business's branch.
     unique('branches_id_business_uq').on(t.id, t.businessId),
     check('branches_fee_non_negative', sql`${t.feeAmount} >= 0`),
-    index().on(t.businessId),
+    index('branches_business_idx').on(t.businessId),
   ],
 );
 
 // Weekly opening hours (several rows per weekday allowed, e.g. for a lunch break).
 // weekday follows ISO / Luxon: 1 = Monday … 7 = Sunday.
-export const branchHours = pgTable(
+export const branchHours = mysqlTable(
   'branch_hours',
   {
     id: id(),
-    branchId: integer().notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    branchId: int().notNull().references(() => branches.id, { onDelete: 'cascade' }),
     weekday: smallint().notNull(),
     openTime: time().notNull(),
     closeTime: time().notNull(),
@@ -108,43 +108,43 @@ export const branchHours = pgTable(
   (t) => [
     check('branch_hours_weekday', sql`${t.weekday} between 1 and 7`),
     check('branch_hours_order', sql`${t.closeTime} > ${t.openTime}`),
-    index().on(t.branchId),
+    index('branch_hours_branch_idx').on(t.branchId),
   ],
 );
 
-export const branchHolidays = pgTable(
+export const branchHolidays = mysqlTable(
   'branch_holidays',
   {
     id: id(),
-    branchId: integer().notNull().references(() => branches.id, { onDelete: 'cascade' }),
-    date: date().notNull(),
-    reason: text(),
+    branchId: int().notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    date: date({ mode: 'string' }).notNull(),
+    reason: varchar({ length: 200 }),
   },
   (t) => [unique('branch_holidays_branch_date_uq').on(t.branchId, t.date)],
 );
 
 // Which branches an operator may manage.
-export const operatorBranches = pgTable(
+export const operatorBranches = mysqlTable(
   'operator_branches',
   {
-    userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-    branchId: integer().notNull().references(() => branches.id, { onDelete: 'cascade' }),
+    userId: int().notNull().references(() => users.id, { onDelete: 'cascade' }),
+    branchId: int().notNull().references(() => branches.id, { onDelete: 'cascade' }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.branchId] })],
 );
 
-// Session store used by connect-pg-simple (column names are fixed by that library).
-export const sessions = pgTable(
-  'session',
+// Login sessions (see config/sessionStore.js).
+export const sessions = mysqlTable(
+  'sessions',
   {
-    sid: varchar().primaryKey(),
+    sid: varchar({ length: 128 }).primaryKey(),
     sess: json().notNull(),
-    expire: timestamp({ precision: 6 }).notNull(),
+    expire: ts().notNull(),
   },
-  (t) => [index('IDX_session_expire').on(t.expire)],
+  (t) => [index('sessions_expire_idx').on(t.expire)],
 );
 
-export const otpCodes = pgTable(
+export const otpCodes = mysqlTable(
   'otp_codes',
   {
     id: id(),
@@ -156,22 +156,38 @@ export const otpCodes = pgTable(
     ip: varchar({ length: 64 }),
     createdAt: createdAt(),
   },
-  (t) => [index().on(t.phone, t.createdAt)],
+  (t) => [index('otp_codes_phone_idx').on(t.phone, t.createdAt)],
 );
 
-export const auditLogs = pgTable(
+export const auditLogs = mysqlTable(
   'audit_logs',
   {
     id: id(),
-    actorUserId: integer().references(() => users.id, { onDelete: 'set null' }),
-    businessId: integer().references(() => businesses.id, { onDelete: 'set null' }),
+    actorUserId: int().references(() => users.id, { onDelete: 'set null' }),
+    businessId: int().references(() => businesses.id, { onDelete: 'set null' }),
     action: varchar({ length: 80 }).notNull(),
     entityType: varchar({ length: 40 }).notNull(),
-    entityId: integer(),
-    before: jsonb(),
-    after: jsonb(),
+    entityId: int(),
+    before: json(),
+    after: json(),
     ip: varchar({ length: 64 }),
     createdAt: createdAt(),
   },
-  (t) => [index().on(t.businessId, t.createdAt), index().on(t.createdAt)],
+  (t) => [index('audit_logs_business_idx').on(t.businessId, t.createdAt), index('audit_logs_created_idx').on(t.createdAt)],
 );
+
+// Background jobs: one row per recurring task, used so that only one process runs it at a time.
+export const jobRuns = mysqlTable('job_runs', {
+  name: varchar({ length: 40 }).primaryKey(),
+  lockedUntil: ts(),
+  lastStartedAt: ts(),
+  lastFinishedAt: ts(),
+  lastError: text(),
+});
+
+// One row per line. Queue actions lock this row (SELECT … FOR UPDATE) for the whole transaction,
+// so two operators pressing "call next" together are handled one after the other.
+// It is a separate table so the lock never blocks foreign-key checks on `lines`.
+export const lineLocks = mysqlTable('line_locks', {
+  lineId: int().primaryKey(),
+});

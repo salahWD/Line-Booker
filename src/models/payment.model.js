@@ -1,10 +1,10 @@
 // Payment submissions ("I transferred the money") reviewed by the platform admin.
 import { and, eq, desc, asc, inArray, sql } from 'drizzle-orm';
 import { paymentSubmissions, appointments, users, branches, businesses, lines } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne, affected } from './db-helpers.js';
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(paymentSubmissions).values(data).returning());
+  return insertOne(paymentSubmissions, data, tx);
 }
 
 export async function findById(id, tx) {
@@ -51,18 +51,12 @@ export async function listForAdmin({ statuses, limit = 100 }, tx) {
 
 /** Status change guarded by the current status (another admin may have decided already). */
 export async function transition(id, fromStatus, data, tx) {
-  return one(
-    await exec(tx)
-      .update(paymentSubmissions)
-      .set(data)
-      .where(and(eq(paymentSubmissions.id, id), eq(paymentSubmissions.status, fromStatus)))
-      .returning(),
-  );
+  return updateOne(paymentSubmissions, id, data, tx, eq(paymentSubmissions.status, fromStatus));
 }
 
 export async function countPending(tx) {
   const [row] = await exec(tx)
-    .select({ n: sql`count(*)::int` })
+    .select({ n: sql`count(*)`.mapWith(Number) })
     .from(paymentSubmissions)
     .where(eq(paymentSubmissions.status, 'pending'));
   return row.n;

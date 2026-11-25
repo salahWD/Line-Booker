@@ -1,7 +1,7 @@
 // Users: customers, operators, business owners and platform admins.
 import { and, eq, inArray, or, asc, sql } from 'drizzle-orm';
 import { users, operatorBranches, businesses } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne, affected } from './db-helpers.js';
 
 export async function findById(id, tx) {
   return one(await exec(tx).select().from(users).where(eq(users.id, id)));
@@ -37,11 +37,11 @@ export async function findStaffByIdentifier({ email, phone }, tx) {
 }
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(users).values(data).returning());
+  return insertOne(users, data, tx);
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(users).set(data).where(eq(users.id, id)).returning());
+  return updateOne(users, id, data, tx);
 }
 
 export async function touchLogin(id, tx) {
@@ -74,7 +74,7 @@ export async function setOperatorBranches(userId, branchIds, tx) {
 
 export async function countByRole(tx) {
   const rows = await exec(tx)
-    .select({ role: users.role, count: sql`count(*)::int` })
+    .select({ role: users.role, count: sql`count(*)`.mapWith(Number) })
     .from(users)
     .groupBy(users.role);
   return Object.fromEntries(rows.map((r) => [r.role, r.count]));

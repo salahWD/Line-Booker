@@ -114,43 +114,39 @@ async function slotAt(ln, startsAt, capacity = 1) {
       capacity,
     },
   ]);
-  const { rows } = await pool.query('select id from appointment_slots where line_id = $1 and starts_at = $2', [ln.id, startsAt]);
+  const [rows] = await pool.query('select id from appointment_slots where line_id = ? and starts_at = ?', [ln.id, startsAt]);
   return rows[0].id;
 }
+
+/** Runs a query and returns its rows. */
+const query = async (text, params) => (await pool.query(text, params))[0];
 
 // Each check books on its own day (a customer may hold only one active appointment per line per day).
 const dayAt = (daysAhead, hh = 10) => DateTime.now().setZone(TZ).plus({ days: daysAhead }).set({ hour: hh, minute: 0, second: 0, millisecond: 0 }).toJSDate();
 
 async function cleanup() {
-  const biz = created.businesses;
-  const users = created.users;
-  // $1 = business ids, $2 = user ids (each query gets exactly the parameters it uses).
-  const q = (text) => {
-    const usesBiz = text.includes('$1');
-    const usesUsers = text.includes('$2');
-    if (usesBiz && usesUsers) return pool.query(text, [biz, users]);
-    if (usesBiz) return pool.query(text, [biz]);
-    return pool.query(text.replaceAll('$2', '$1'), [users]);
-  };
-  await q(`delete from notifications where user_id = any($2::int[])
-           or ticket_id in (select id from queue_tickets where business_id = any($1::int[]))
-           or appointment_id in (select id from appointments where business_id = any($1::int[]))`);
-  await q('delete from notes where business_id = any($1::int[]) or author_id = any($2::int[])');
-  await q('delete from reviews where business_id = any($1::int[])');
-  await q('delete from payment_submissions where appointment_id in (select id from appointments where business_id = any($1::int[]))');
-  await q('delete from queue_tickets where business_id = any($1::int[])');
-  await q('delete from appointments where business_id = any($1::int[])');
-  await q('delete from appointment_slots where business_id = any($1::int[])');
-  await q('delete from queue_counters where line_id in (select id from lines where business_id = any($1::int[]))');
-  await q('delete from line_pauses where line_id in (select id from lines where business_id = any($1::int[]))');
-  await q('delete from lines where business_id = any($1::int[])');
-  await q('delete from operator_branches where user_id = any($2::int[])');
-  await q('delete from push_tokens where user_id = any($2::int[])');
-  await q('delete from audit_logs where business_id = any($1::int[]) or actor_user_id = any($2::int[])');
-  await q('delete from branches where business_id = any($1::int[])');
-  await q('delete from otp_codes where phone in (select phone from users where id = any($2::int[]))');
-  await q('delete from users where id = any($2::int[])');
-  await q('delete from businesses where id = any($1::int[])');
+  // :biz = business ids, :users = user ids (0 keeps "in (…)" valid when a list is empty).
+  const biz = created.businesses.length ? created.businesses : [0];
+  const users = created.users.length ? created.users : [0];
+  const q = (text) => pool.query(text.replaceAll(':biz', pool.escape(biz)).replaceAll(':users', pool.escape(users)));
+  await q(`delete from notifications where user_id in (:users)
+           or ticket_id in (select id from queue_tickets where business_id in (:biz))
+           or appointment_id in (select id from appointments where business_id in (:biz))`);
+  await q('delete from notes where business_id in (:biz) or author_id in (:users)');
+  await q('delete from reviews where business_id in (:biz)');
+  await q('delete from payment_submissions where appointment_id in (select id from appointments where business_id in (:biz))');
+  await q('delete from queue_tickets where business_id in (:biz)');
+  await q('delete from appointments where business_id in (:biz)');
+  await q('delete from appointment_slots where business_id in (:biz)');
+  await q('delete from line_locks where line_id in (select id from `lines` where business_id in (:biz))');
+  await q('delete from `lines` where business_id in (:biz)');
+  await q('delete from operator_branches where user_id in (:users)');
+  await q('delete from push_tokens where user_id in (:users)');
+  await q('delete from audit_logs where business_id in (:biz) or actor_user_id in (:users)');
+  await q('delete from branches where business_id in (:biz)');
+  await q('delete from otp_codes where phone in (select phone from users where id in (:users))');
+  await q('delete from users where id in (:users)');
+  await q('delete from businesses where id in (:biz)');
 }
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
@@ -316,8 +312,8 @@ try {
     assert.equal(ticket.source, 'appointment');
     const again = await lineService.checkIn(c7, ap.id);
     assert.equal(again.id, walkIn.id);
-    const { rows } = await pool.query("select count(*)::int as n from queue_tickets where line_id = $1 and customer_id = $2 and status in ('waiting','called')", [lineA2.id, c7.id]);
-    assert.equal(rows[0].n, 1);
+    const rows = await query("select count(*) as n from queue_tickets where line_id = ? and customer_id = ? and status in ('waiting','called')", [lineA2.id, c7.id]);
+    assert.equal(Number(rows[0].n), 1);
   });
   await check('"take a number" with an appointment today becomes a check-in', async () => {
     await appointments.hold(c8, lineA2.id, { slotId: todaySlot });
@@ -329,22 +325,22 @@ try {
     const ap = await appointmentModel.findForCustomerLineDay(c8.id, lineA2.id, DateTime.now().setZone(TZ).toISODate());
     await appointments.cancelByStaff(operatorQ1, ap.id, 'طلب الزبون');
     assert.equal((await appointmentModel.findById(ap.id)).status, 'cancelled');
-    const { rows } = await pool.query("select status from queue_tickets where appointment_id = $1", [ap.id]);
+    const rows = await query('select status from queue_tickets where appointment_id = ?', [ap.id]);
     assert.deepEqual(rows.map((r) => r.status), ['cancelled']);
   });
   await check('"approaching" alert is sent at most once per ticket (parallel checks)', async () => {
     await Promise.all([alerts.checkLine(lineA2.id), alerts.checkLine(lineA2.id), alerts.checkLine(lineA2.id)]);
-    const { rows } = await pool.query(
-      `select ticket_id, count(*)::int as n from notifications
-       where kind = 'turn_approaching' and ticket_id in (select id from queue_tickets where line_id = $1) group by ticket_id`,
+    const rows = await query(
+      `select ticket_id, count(*) as n from notifications
+       where kind = 'turn_approaching' and ticket_id in (select id from queue_tickets where line_id = ?) group by ticket_id`,
       [lineA2.id],
     );
     assert.ok(rows.length > 0, 'some alerts were sent');
-    assert.ok(rows.every((r) => r.n === 1), `duplicates: ${JSON.stringify(rows)}`);
+    assert.ok(rows.every((r) => Number(r.n) === 1), `duplicates: ${JSON.stringify(rows)}`);
   });
   await check('"your turn" notification is queued when a ticket is called', async () => {
-    const { rows } = await pool.query("select count(*)::int as n from notifications where kind = 'your_turn' and ticket_id = $1", [calledA.id]);
-    assert.ok(rows[0].n >= 1);
+    const rows = await query("select count(*) as n from notifications where kind = 'your_turn' and ticket_id = ?", [calledA.id]);
+    assert.ok(Number(rows[0].n) >= 1);
   });
 
   // ─── 4. Note privacy ───────────────────────────────────────────────────────
@@ -388,8 +384,8 @@ try {
     assert.equal(a.paymentStatus, 'confirmed');
     assert.equal(a.paymentConfirmedById, admin.id);
     assert.ok(a.paymentConfirmedAt instanceof Date);
-    const { rows } = await pool.query("select count(*)::int as n from audit_logs where action = 'payment.confirm' and entity_id = $1", [submission.id]);
-    assert.equal(rows[0].n, 1);
+    const rows = await query("select count(*) as n from audit_logs where action = 'payment.confirm' and entity_id = ?", [submission.id]);
+    assert.equal(Number(rows[0].n), 1);
   });
   await check('confirming twice is refused (409)', () => rejectsWith(payments.confirmPayment(admin, submission.id), 409));
 } finally {

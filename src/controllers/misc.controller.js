@@ -4,6 +4,7 @@ import { readDevInbox } from '../integrations/dev-inbox.js';
 import { twilioSmsProvider } from '../integrations/sms/twilio.provider.js';
 import * as notifications from '../services/notification.service.js';
 import { notFound } from '../utils/errors.js';
+import { tick } from '../jobs/index.js';
 import { t } from '../locales/ar.js';
 
 /** DEVELOPMENT ONLY: shows the messages the mock providers "sent" (including OTP codes). */
@@ -25,4 +26,14 @@ export async function twilioStatus(req, res) {
     await notifications.recordDeliveryStatus(MessageSid, twilioSmsProvider.mapStatus(MessageStatus), ErrorCode ? `Twilio error ${ErrorCode}` : null);
   }
   res.status(204).end();
+}
+
+/**
+ * Runs the background jobs that are due. Meant for a hosting cron job, e.g. every minute:
+ *   curl -s "https://your-domain/internal/tick?key=CRON_SECRET"
+ */
+export async function cronTick(req, res) {
+  if (!env.CRON_SECRET || req.query.key !== env.CRON_SECRET) return res.status(403).end();
+  const ran = await tick();
+  res.json({ ok: true, ran });
 }

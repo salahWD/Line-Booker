@@ -1,23 +1,25 @@
 // Queue tickets ("numbers") and the per-day number counter.
-import { and, eq, inArray, desc, asc, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, desc, asc, isNotNull, isNull, lt, gte, sql } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 import { queueTickets, queueCounters, users, lines, branches, appointments } from './schema/index.js';
-import { exec, one, rows } from './db-helpers.js';
+import { exec, one, rows, insertOne, updateOne, affected, utcDate, numbers } from './db-helpers.js';
 
 /** Atomically takes the next ticket number for a line and day (1, 2, 3 …). */
 export async function nextNumber(lineId, serviceDate, tx) {
-  const [row] = await exec(tx)
+  await exec(tx)
     .insert(queueCounters)
     .values({ lineId, serviceDate, lastNumber: 1 })
-    .onConflictDoUpdate({
-      target: [queueCounters.lineId, queueCounters.serviceDate],
-      set: { lastNumber: sql`${queueCounters.lastNumber} + 1` },
-    })
-    .returning({ number: queueCounters.lastNumber });
+    .onDuplicateKeyUpdate({ set: { lastNumber: sql`${queueCounters.lastNumber} + 1` } });
+  // The upsert keeps the counter row locked until commit, so this read returns our number.
+  const [row] = await exec(tx)
+    .select({ number: queueCounters.lastNumber })
+    .from(queueCounters)
+    .where(and(eq(queueCounters.lineId, lineId), eq(queueCounters.serviceDate, serviceDate)));
   return row.number;
 }
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(queueTickets).values(data).returning());
+  return insertOne(queueTickets, data, tx);
 }
 
 export async function findById(id, tx) {
@@ -89,7 +91,7 @@ export async function listByStatus(lineId, serviceDate, statuses, tx) {
         inArray(queueTickets.status, statuses),
       ),
     )
-    .orderBy(asc(queueTickets.joinedAt));
+    .orderBy(asc(queueTickets.joinedAt), asc(queueTickets.id));
 }
 
 /** Most recent calls (for display screens): newest first. */
@@ -129,7 +131,7 @@ export async function recentCallGroups(lineId, serviceDate, limit, tx) {
         isNotNull(queueTickets.firstCalledAt),
       ),
     )
-    .orderBy(desc(queueTickets.firstCalledAt))
+    .orderBy(desc(queueTickets.firstCalledAt), desc(queueTickets.id))
     .limit(limit);
   return result.map((r) => r.group);
 }
@@ -139,28 +141,20 @@ export async function recentCallGroups(lineId, serviceDate, limit, tx) {
  * Returns the updated row, or null when another operator already changed it.
  */
 export async function transition(id, fromStatuses, data, tx) {
-  return one(
-    await exec(tx)
-      .update(queueTickets)
-      .set(data)
-      .where(and(eq(queueTickets.id, id), inArray(queueTickets.status, fromStatuses)))
-      .returning(),
-  );
+  return updateOne(queueTickets, id, data, tx, inArray(queueTickets.status, fromStatuses));
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(queueTickets).set(data).where(eq(queueTickets.id, id)).returning());
+  return updateOne(queueTickets, id, data, tx);
 }
 
 /** Marks the "approaching" alert as sent — only once per ticket. */
 export async function claimApproachAlert(id, tx) {
-  return one(
-    await exec(tx)
-      .update(queueTickets)
-      .set({ approachAlertedAt: new Date() })
-      .where(and(eq(queueTickets.id, id), sql`${queueTickets.approachAlertedAt} is null`, eq(queueTickets.status, 'waiting')))
-      .returning({ id: queueTickets.id }),
-  );
+  const result = await exec(tx)
+    .update(queueTickets)
+    .set({ approachAlertedAt: new Date() })
+    .where(and(eq(queueTickets.id, id), isNull(queueTickets.approachAlertedAt), eq(queueTickets.status, 'waiting')));
+  return affected(result) ? { id } : null;
 }
 
 /** A customer's tickets with line and branch names (newest first). */
@@ -189,7 +183,7 @@ export async function listForCustomer(customerId, limit, tx) {
 export async function waitingCounts(lineIds, tx) {
   if (!lineIds.length) return {};
   const result = await exec(tx)
-    .select({ lineId: queueTickets.lineId, count: sql`count(*)::int` })
+    .select({ lineId: queueTickets.lineId, count: sql`count(*)`.mapWith(Number) })
     .from(queueTickets)
     .where(and(inArray(queueTickets.lineId, lineIds), eq(queueTickets.status, 'waiting')))
     .groupBy(queueTickets.lineId);
@@ -203,7 +197,7 @@ export async function callTimesSince(lineId, from, tx) {
   const result = await exec(tx)
     .select({ at: queueTickets.firstCalledAt })
     .from(queueTickets)
-    .where(and(eq(queueTickets.lineId, lineId), sql`${queueTickets.firstCalledAt} >= ${from}`))
+    .where(and(eq(queueTickets.lineId, lineId), gte(queueTickets.firstCalledAt, from)))
     .orderBy(asc(queueTickets.firstCalledAt));
   return result.map((r) => r.at);
 }
@@ -213,73 +207,91 @@ export async function callTimesSince(lineId, from, tx) {
  * restricted to a time-of-day window around now. Gaps over 60 minutes (breaks) are ignored.
  */
 export async function historicalCallGap({ lineId, timezone, fromDate, toDate, isoWeekday, timeFrom, timeTo }, tx) {
-  const [row] = await rows(
+  // MySQL WEEKDAY() is 0 = Monday, so the ISO weekday is WEEKDAY() + 1.
+  const calls = await rows(
     sql`
-      with calls as (
-        select first_called_at,
-               extract(epoch from first_called_at - lag(first_called_at)
-                 over (partition by service_date order by first_called_at)) / 60.0 as gap
-        from queue_tickets
-        where line_id = ${lineId}
-          and service_date >= ${fromDate} and service_date < ${toDate}
-          and extract(isodow from service_date) = ${isoWeekday}
-          and first_called_at is not null
-      )
-      select avg(gap)::float as avg_gap, count(gap)::int as samples
-      from calls
-      where gap between 0.2 and 60
-        and (first_called_at at time zone ${timezone})::time between ${timeFrom}::time and ${timeTo}::time
+      select service_date, first_called_at
+      from queue_tickets
+      where line_id = ${lineId}
+        and service_date >= ${fromDate} and service_date < ${toDate}
+        and weekday(service_date) + 1 = ${isoWeekday}
+        and first_called_at is not null
+      order by service_date, first_called_at
     `,
     tx,
   );
-  return { avgGap: row?.avg_gap ?? null, samples: row?.samples ?? 0 };
+  // Gaps between consecutive calls of the same day, kept when the call happened inside the
+  // branch-local time window. Done in JS so MySQL needs no time-zone tables.
+  let total = 0;
+  let samples = 0;
+  let prev = null;
+  for (const row of calls) {
+    const at = utcDate(row.first_called_at);
+    if (prev && prev.day === row.service_date) {
+      const gap = (at - prev.at) / 60_000;
+      const local = DateTime.fromJSDate(at, { zone: timezone }).toFormat('HH:mm:ss');
+      if (gap >= 0.2 && gap <= 60 && local >= timeFrom && local <= timeTo) {
+        total += gap;
+        samples += 1;
+      }
+    }
+    prev = { day: row.service_date, at };
+  }
+  return { avgGap: samples ? total / samples : null, samples };
 }
 
 /** Today's called vs. skipped counts — skipped people do not delay the people behind them. */
 export async function todaySkipStats(lineId, serviceDate, tx) {
-  const [row] = await rows(
+  const result = await rows(
     sql`
-      select count(*) filter (where first_called_at is not null)::int as called,
-             count(*) filter (where status = 'skipped' or (status = 'cancelled' and first_called_at is not null))::int as skipped
+      select coalesce(sum(first_called_at is not null), 0) as called,
+             coalesce(sum(status = 'skipped' or (status = 'cancelled' and first_called_at is not null)), 0) as skipped
       from queue_tickets where line_id = ${lineId} and service_date = ${serviceDate}
     `,
     tx,
   );
-  return row;
+  return numbers(result, ['called', 'skipped'])[0];
 }
 
 /** Today's summary for operator/owner dashboards. */
 export async function todayStats(lineId, serviceDate, tx) {
-  const [row] = await rows(
+  const result = await rows(
     sql`
-      select count(*) filter (where status = 'completed')::int as served,
-             count(*) filter (where status = 'waiting')::int as waiting,
-             round(avg(actual_wait_seconds) / 60.0)::int as avg_wait_min
+      select coalesce(sum(status = 'completed'), 0) as served,
+             coalesce(sum(status = 'waiting'), 0) as waiting,
+             round(avg(actual_wait_seconds) / 60.0) as avg_wait_min
       from queue_tickets where line_id = ${lineId} and service_date = ${serviceDate}
     `,
     tx,
   );
-  return row;
+  return numbers(result, ['served', 'waiting', 'avg_wait_min'])[0];
 }
 
-/** End of day: closes leftover tickets from previous days. */
+/** End of day: closes leftover tickets from previous days. Returns the closed tickets. */
 export async function expireBefore(lineId, serviceDate, tx) {
-  return exec(tx)
-    .update(queueTickets)
-    .set({ status: 'expired', closedAt: new Date() })
+  const leftovers = await exec(tx)
+    .select({ id: queueTickets.id, appointmentId: queueTickets.appointmentId })
+    .from(queueTickets)
     .where(
       and(
         eq(queueTickets.lineId, lineId),
-        sql`${queueTickets.serviceDate} < ${serviceDate}`,
+        lt(queueTickets.serviceDate, serviceDate),
         inArray(queueTickets.status, ['waiting', 'called', 'skipped']),
       ),
     )
-    .returning({ id: queueTickets.id, appointmentId: queueTickets.appointmentId });
+    .for('update');
+  if (leftovers.length) {
+    await exec(tx)
+      .update(queueTickets)
+      .set({ status: 'expired', closedAt: new Date() })
+      .where(inArray(queueTickets.id, leftovers.map((r) => r.id)));
+  }
+  return leftovers;
 }
 
 export async function countToday(tx) {
-  const [row] = await rows(sql`select count(*)::int as n from queue_tickets where joined_at >= now() - interval '24 hours'`, tx);
-  return row.n;
+  const [row] = await rows(sql`select count(*) as n from queue_tickets where joined_at >= ${new Date(Date.now() - 86_400_000)}`, tx);
+  return Number(row.n);
 }
 
 /** Ticket joined with its appointment start time (for operator lists). */

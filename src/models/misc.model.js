@@ -1,12 +1,12 @@
 // Small tables: OTP codes, platform settings and the audit log.
-import { and, eq, desc, gte, isNull, sql } from 'drizzle-orm';
+import { and, eq, desc, gte, lt, isNull, sql } from 'drizzle-orm';
 import { otpCodes, platformSettings, auditLogs, users } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne, affected } from './db-helpers.js';
 
 // ── OTP codes ──────────────────────────────────────────────────
 
 export async function createOtp(data, tx) {
-  return one(await exec(tx).insert(otpCodes).values(data).returning());
+  return insertOne(otpCodes, data, tx);
 }
 
 export async function latestOtp(phone, tx) {
@@ -28,7 +28,7 @@ export async function latestUsableOtp(phone, tx) {
 
 export async function countOtpsSince(phone, since, tx) {
   const [row] = await exec(tx)
-    .select({ n: sql`count(*)::int` })
+    .select({ n: sql`count(*)`.mapWith(Number) })
     .from(otpCodes)
     .where(and(eq(otpCodes.phone, phone), gte(otpCodes.createdAt, since)));
   return row.n;
@@ -39,7 +39,7 @@ export async function updateOtp(id, data, tx) {
 }
 
 export async function deleteOldOtps(tx) {
-  await exec(tx).delete(otpCodes).where(sql`${otpCodes.createdAt} < now() - interval '1 day'`);
+  await exec(tx).delete(otpCodes).where(lt(otpCodes.createdAt, new Date(Date.now() - 86_400_000)));
 }
 
 // ── Platform settings (single row) ─────────────────────────────
@@ -50,13 +50,11 @@ export async function getSettings(tx) {
 }
 
 export async function saveSettings(data, tx) {
-  return one(
-    await exec(tx)
-      .insert(platformSettings)
-      .values({ id: 1, ...data })
-      .onConflictDoUpdate({ target: platformSettings.id, set: data })
-      .returning(),
-  );
+  await exec(tx)
+    .insert(platformSettings)
+    .values({ id: 1, ...data })
+    .onDuplicateKeyUpdate({ set: data });
+  return getSettings(tx);
 }
 
 // ── Audit log ──────────────────────────────────────────────────

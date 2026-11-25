@@ -2,19 +2,20 @@
   "name": "dawri-booking",
   "version": "1.0.0",
   "private": true,
-  "description": "Arabic-first take-a-number lines and paid appointments (Express + EJS + PostgreSQL)",
+  "description": "Arabic-first take-a-number lines and paid appointments (Express + EJS + MySQL/MariaDB)",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "db:start": "node scripts/db-start.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.js",
     "db:seed": "node database/seeds/seed.js",
     "db:reset": "node scripts/reset.js && node scripts/migrate.js && node database/seeds/seed.js",
+    "create-admin": "node scripts/create-admin.js",
     "css:build": "tailwindcss -i src/public/css/input.css -o src/public/css/app.css --minify",
     "css:watch": "tailwindcss -i src/public/css/input.css -o src/public/css/app.css --watch",
+    "build": "npm run css:build",
     "dev": "concurrently -k -n css,web -c blue,green \"npm:css:watch\" \"node --watch src/server.js\"",
     "start": "node src/server.js",
     "worker": "node src/worker.js",
@@ -23,9 +24,9 @@
   "dependencies": {
     "@alpinejs/csp": "^3.17.5",
     "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+    "@tailwindcss/cli": "^4.3.5",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.6.1",
-    "connect-pg-simple": "^10.0.0",
     "dotenv": "^18.0.10",
     "drizzle-orm": "^0.45.4",
     "ejs": "^7.0.2",
@@ -40,16 +41,13 @@
     "libphonenumber-js": "^1.13.17",
     "luxon": "^3.7.2",
     "multer": "^2.5.0",
-    "pg": "^8.23.1",
-    "pg-boss": "^10.4.2",
+    "mysql2": "^3.24.6",
     "qrcode": "^1.5.4",
+    "tailwindcss": "^4.3.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.5",
     "concurrently": "^9.2.5",
-    "drizzle-kit": "^0.31.11",
-    "embedded-postgres": "^18.7.0-beta.19",
-    "tailwindcss": "^4.3.5"
+    "drizzle-kit": "^0.31.11"
   }
 }

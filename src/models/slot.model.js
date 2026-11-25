@@ -1,7 +1,7 @@
 // Appointment slots published by owners, and the capacity counter on each slot.
 import { and, eq, asc, gt, sql, inArray } from 'drizzle-orm';
 import { appointmentSlots, appointments } from './schema/index.js';
-import { exec, one, rows } from './db-helpers.js';
+import { exec, one, rows, affected, updateOne, numbers } from './db-helpers.js';
 
 export async function findById(id, tx) {
   return one(await exec(tx).select().from(appointmentSlots).where(eq(appointmentSlots.id, id)));
@@ -10,12 +10,9 @@ export async function findById(id, tx) {
 /** Bulk insert; slots that already exist (same line + start) are skipped. Returns the inserted count. */
 export async function insertMany(slots, tx) {
   if (!slots.length) return 0;
-  const inserted = await exec(tx)
-    .insert(appointmentSlots)
-    .values(slots)
-    .onConflictDoNothing({ target: [appointmentSlots.lineId, appointmentSlots.startsAt] })
-    .returning({ id: appointmentSlots.id });
-  return inserted.length;
+  // INSERT IGNORE skips duplicates of `slots_line_start_uq`; affectedRows counts the new rows.
+  const result = await exec(tx).insert(appointmentSlots).ignore().values(slots);
+  return affected(result);
 }
 
 export async function listDay(lineId, localDate, tx) {
@@ -28,9 +25,9 @@ export async function listDay(lineId, localDate, tx) {
 
 /** Days that still have at least one bookable slot, with how many places are left. */
 export async function bookableDates(lineId, earliest, lastDate, tx) {
-  return rows(
+  const result = await rows(
     sql`
-      select local_date as date, sum(capacity - reserved_count)::int as remaining
+      select local_date as date, sum(capacity - reserved_count) as remaining
       from appointment_slots
       where line_id = ${lineId} and is_open and reserved_count < capacity
         and starts_at >= ${earliest} and local_date <= ${lastDate}
@@ -39,6 +36,7 @@ export async function bookableDates(lineId, earliest, lastDate, tx) {
     `,
     tx,
   );
+  return numbers(result, ['remaining']);
 }
 
 export async function bookableSlots(lineId, localDate, earliest, tx) {
@@ -64,18 +62,13 @@ export async function bookableSlots(lineId, localDate, earliest, tx) {
  * Returns the slot, or null when it is full/closed.
  */
 export async function reserve(slotId, tx) {
-  return one(
-    await exec(tx)
-      .update(appointmentSlots)
-      .set({ reservedCount: sql`${appointmentSlots.reservedCount} + 1` })
-      .where(
-        and(
-          eq(appointmentSlots.id, slotId),
-          eq(appointmentSlots.isOpen, true),
-          sql`${appointmentSlots.reservedCount} < ${appointmentSlots.capacity}`,
-        ),
-      )
-      .returning(),
+  return updateOne(
+    appointmentSlots,
+    slotId,
+    { reservedCount: sql`${appointmentSlots.reservedCount} + 1` },
+    tx,
+    eq(appointmentSlots.isOpen, true),
+    sql`${appointmentSlots.reservedCount} < ${appointmentSlots.capacity}`,
   );
 }
 
@@ -88,16 +81,15 @@ export async function release(slotId, tx) {
 }
 
 export async function setOpen(slotId, isOpen, tx) {
-  return one(await exec(tx).update(appointmentSlots).set({ isOpen }).where(eq(appointmentSlots.id, slotId)).returning());
+  return updateOne(appointmentSlots, slotId, { isOpen }, tx);
 }
 
 export async function closeDay(lineId, localDate, tx) {
   const result = await exec(tx)
     .update(appointmentSlots)
     .set({ isOpen: false })
-    .where(and(eq(appointmentSlots.lineId, lineId), eq(appointmentSlots.localDate, localDate), eq(appointmentSlots.isOpen, true)))
-    .returning({ id: appointmentSlots.id });
-  return result.length;
+    .where(and(eq(appointmentSlots.lineId, lineId), eq(appointmentSlots.localDate, localDate), eq(appointmentSlots.isOpen, true)));
+  return affected(result);
 }
 
 /** Deletes a slot only if no appointment (of any status) ever used it. */
@@ -107,18 +99,17 @@ export async function deleteIfUnused(slotId, tx) {
     .where(
       and(
         eq(appointmentSlots.id, slotId),
-        sql`not exists (select 1 from ${appointments} where ${appointments.slotId} = ${appointmentSlots.id})`,
+        sql`not exists (select 1 from ${appointments} where ${appointments.slotId} = ${slotId})`,
       ),
-    )
-    .returning({ id: appointmentSlots.id });
-  return result.length > 0;
+    );
+  return affected(result) > 0;
 }
 
 /** Booked customers per slot (owner calendar). */
 export async function bookingsBySlot(slotIds, tx) {
   if (!slotIds.length) return {};
   const result = await exec(tx)
-    .select({ slotId: appointments.slotId, count: sql`count(*)::int` })
+    .select({ slotId: appointments.slotId, count: sql`count(*)`.mapWith(Number) })
     .from(appointments)
     .where(and(inArray(appointments.slotId, slotIds), inArray(appointments.status, ['held', 'confirmed', 'checked_in'])))
     .groupBy(appointments.slotId);

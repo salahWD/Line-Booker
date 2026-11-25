@@ -17,7 +17,6 @@ import * as slotModel from '../models/slot.model.js';
 import * as settingsService from './settings.service.js';
 import * as notifications from './notification.service.js';
 import * as audit from './audit.service.js';
-import { scheduleReminder } from './appointment.service.js';
 import { assertPlatformAdmin } from './access.service.js';
 import { formatMoney } from '../utils/money.js';
 import { formatDate, hhmm } from '../utils/dates.js';
@@ -136,8 +135,7 @@ export async function confirmPayment(admin, submissionId, ip) {
       link: notifications.absoluteUrl(`/me/appointments/${appointment.reference}`),
       appointmentId: appointment.id,
     });
-    scheduleReminder(tx, appointment);
-    return appointment;
+    return appointment; // the reminder is sent later by the job sweep
   });
 }
 

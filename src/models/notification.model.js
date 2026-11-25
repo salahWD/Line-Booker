@@ -1,10 +1,13 @@
 // Notification outbox rows and customers' push tokens.
-import { and, eq, desc, isNull, inArray, sql, lt, or } from 'drizzle-orm';
+import { and, eq, desc, isNull, inArray, lt, lte, or, sql } from 'drizzle-orm';
 import { notifications, pushTokens } from './schema/index.js';
-import { exec, one } from './db-helpers.js';
+import { exec, one, insertOne, updateOne } from './db-helpers.js';
+
+/** How long a "sending" row is reserved before the sweep assumes the sender died. */
+const SENDING_LEASE_MS = 10 * 60_000;
 
 export async function create(data, tx) {
-  return one(await exec(tx).insert(notifications).values(data).returning());
+  return insertOne(notifications, data, tx);
 }
 
 export async function findById(id, tx) {
@@ -12,38 +15,42 @@ export async function findById(id, tx) {
 }
 
 export async function update(id, data, tx) {
-  return one(await exec(tx).update(notifications).set(data).where(eq(notifications.id, id)).returning());
+  return updateOne(notifications, id, data, tx);
 }
 
-/** Marks a queued row as "sending" — returns null if another worker already took it. */
+/**
+ * Marks a queued row as "sending" — returns null if another worker already took it.
+ * `nextAttemptAt` becomes a lease: if the process dies mid-send, the sweep retries after it.
+ */
 export async function claimForSending(id, tx) {
-  return one(
-    await exec(tx)
-      .update(notifications)
-      .set({ status: 'sending', attempts: sql`${notifications.attempts} + 1` })
-      .where(and(eq(notifications.id, id), eq(notifications.status, 'queued')))
-      .returning(),
+  return updateOne(
+    notifications,
+    id,
+    { status: 'sending', attempts: sql`${notifications.attempts} + 1`, nextAttemptAt: new Date(Date.now() + SENDING_LEASE_MS) },
+    tx,
+    eq(notifications.status, 'queued'),
   );
 }
 
-/** Rows that were never handed to the job queue, or have been stuck for a while. */
-export async function listStuck(limit, tx) {
+/**
+ * Rows the job sweep should (re)send: queued rows whose retry time has come, and "sending"
+ * rows whose lease ran out. Rows created in the last few seconds are left to the
+ * immediate after-commit send.
+ */
+export async function listDue(limit, tx) {
+  const now = new Date();
   return exec(tx)
-    .select({ id: notifications.id })
+    .select({ id: notifications.id, status: notifications.status })
     .from(notifications)
     .where(
-      or(
-        and(eq(notifications.status, 'queued'), isNull(notifications.enqueuedAt)),
-        and(eq(notifications.status, 'queued'), lt(notifications.enqueuedAt, sql`now() - interval '10 minutes'`)),
-        and(eq(notifications.status, 'sending'), lt(notifications.enqueuedAt, sql`now() - interval '10 minutes'`)),
+      and(
+        inArray(notifications.status, ['queued', 'sending']),
+        or(isNull(notifications.nextAttemptAt), lte(notifications.nextAttemptAt, now)),
+        lt(notifications.createdAt, new Date(now.getTime() - 5_000)),
       ),
     )
+    .orderBy(notifications.id)
     .limit(limit);
-}
-
-export async function markEnqueued(ids, tx) {
-  if (!ids.length) return;
-  await exec(tx).update(notifications).set({ enqueuedAt: new Date() }).where(inArray(notifications.id, ids));
 }
 
 export async function findByProviderId(providerMessageId, tx) {
@@ -69,10 +76,7 @@ export async function upsertPushToken(userId, token, userAgent, tx) {
   await exec(tx)
     .insert(pushTokens)
     .values({ userId, token, userAgent })
-    .onConflictDoUpdate({
-      target: pushTokens.token,
-      set: { userId, userAgent, lastSeenAt: new Date(), revokedAt: null },
-    });
+    .onDuplicateKeyUpdate({ set: { userId, userAgent, lastSeenAt: new Date(), revokedAt: null } });
 }
 
 export async function activePushTokens(userId, tx) {
