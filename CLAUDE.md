@@ -37,9 +37,11 @@ npm run worker        # jobs only (set RUN_JOBS=false on web processes)
 npm run create-admin -- --email … --password …   # real admin on a live site (seed refuses in production)
 ```
 - Deployment steps for Hostinger are in README → "Deploying to Hostinger". The user fills in the gitignored `.env.production` with what they have (SSH, DB, domain, Twilio).
-- **Server:** `ssh -i ~/.ssh/dawri_hostinger -p 65002 u999075632@46.202.183.250`.
+- **Server:** `ssh -i ~/.ssh/dawri_hostinger -p $SSH_PORT $SSH_USER@$SSH_HOST`, with the values from `.env.production`.
+  - **This repo is public:** never commit the host, user, paths with the account name, or any secret.
   - The account also hosts the user's **other live sites** under `~/domains`. Touch nothing outside `~/dawri` and this app's own domain folder.
   - Hostinger throttles rapid SSH connections (banner timeouts), so batch commands into one session.
+  - A Hostinger "website" connected to GitHub just copies the repo into `public_html` (a static site that publicly serves the source). The app needs a **Node.js web app** instead, which builds into `hbuilds/` and runs through Passenger.
   - The live settings are in `~/dawri/.env` (the app reads them via `ENV_FILE`; the secrets were generated on the server, so don't copy them out). Node binaries: `/opt/alt/alt-nodejs22/root/usr/bin/node`.
 - **Local test DB:** a portable MariaDB 11.8 in the session scratchpad, started with `mariadbd.exe --defaults-file=<datadir>/my.ini` on port 3307 (root/root). It matches `.env`.
 - `.env` is not in git. Copy `.env.example` and set random `SESSION_SECRET` and `OTP_SECRET`.
